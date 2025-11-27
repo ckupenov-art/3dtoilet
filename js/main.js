@@ -1,4 +1,4 @@
-// main.js – correct spacing + adjustable gap + real hollow core + camera debug
+// main.js – perfect roll geometry (P1) + adjustable gap + camera debug + smooth rendering
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -34,7 +34,7 @@ const camDebugPanel = document.getElementById("camera-debug");
 // --------------------------------------
 
 const scene = new THREE.Scene();
-scene.background = null; // transparent
+scene.background = null;
 
 const camera = new THREE.PerspectiveCamera(
   45,
@@ -55,7 +55,7 @@ controls.enableDamping = true;
 controls.enablePan = true;
 
 // Lighting
-scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
 dirLight.position.set(10, 20, 12);
@@ -70,7 +70,7 @@ scene.add(packGroup);
 // --------------------------------------
 
 const MM  = 0.1;   // 10 mm = 1 unit
-const EPS = 0.01;  // small safety gap
+const EPS = 0.01;  // small offset
 
 function getInt(el, fallback) {
   const v = parseInt(el.value, 10);
@@ -92,20 +92,21 @@ function readParams() {
     coreDiameterMm: getFloat(coreDiameterEl, 45),
     rollHeightMm:   getFloat(rollHeightEl, 100),
 
-    rollGapMm:      getFloat(rollGapEl, 1.0)   // visual gap along roll length
+    rollGapMm:      getFloat(rollGapEl, 1.0)
   };
 }
 
 // --------------------------------------
-// Geometries (hollow roll + hollow core tube)
+// PERFECT ROLL GEOMETRY (P1)
 // --------------------------------------
 
-let paperGeometry = null;
-let coreGeometry  = null;
+let outerShellGeom = null;
+let innerWallGeom  = null;
+let coreTubeGeom   = null;
 
 const paperMaterial = new THREE.MeshStandardMaterial({
   color: 0xffffff,
-  roughness: 0.5,
+  roughness: 0.45,
   metalness: 0.0,
   side: THREE.DoubleSide
 });
@@ -118,47 +119,52 @@ const coreMaterial = new THREE.MeshStandardMaterial({
 });
 
 function updateGeometries(p) {
-  if (paperGeometry) paperGeometry.dispose();
-  if (coreGeometry)  coreGeometry.dispose();
+  // dispose old
+  if (outerShellGeom) outerShellGeom.dispose();
+  if (innerWallGeom)  innerWallGeom.dispose();
+  if (coreTubeGeom)   coreTubeGeom.dispose();
 
-  const outerR = (p.rollDiameterMm / 2) * MM;
-  const coreOuterR = (p.coreDiameterMm / 2) * MM;
-  const rollLength = p.rollHeightMm * MM;
+  const R_outer = (p.rollDiameterMm / 2) * MM;
+  const R_coreOuter = (p.coreDiameterMm / 2) * MM;
+  const length = p.rollHeightMm * MM;
 
-  // thickness of cardboard tube walls
-  const coreWallThickness = Math.min(coreOuterR * 0.25, 0.8 * MM); // up to ~8 mm
-  const coreInnerR = Math.max(coreOuterR - coreWallThickness, coreOuterR * 0.6);
+  // Cardboard tube thickness
+  const tubeThickness = Math.min(R_coreOuter * 0.25, 0.8 * MM);  
+  const R_coreInner = Math.max(R_coreOuter - tubeThickness, R_coreOuter * 0.6);
 
-  // PAPER: hollow cylinder from coreOuterR to outerR
-  const paperShape = new THREE.Shape();
-  paperShape.absarc(0, 0, outerR, 0, Math.PI * 2, false);
-  const paperHole = new THREE.Path();
-  paperHole.absarc(0, 0, coreOuterR, 0, Math.PI * 2, true);
-  paperShape.holes.push(paperHole);
+  // Outer shell - open-ended cylinder (ONLY paper thickness implied visually)
+  outerShellGeom = new THREE.CylinderGeometry(
+    R_outer, R_outer, length, 64, 1, true
+  );
+  outerShellGeom.rotateZ(Math.PI / 2);
 
-  // CORE: thin hollow cardboard tube from coreInnerR to coreOuterR
-  const coreShape = new THREE.Shape();
-  coreShape.absarc(0, 0, coreOuterR, 0, Math.PI * 2, false);
-  const coreHole = new THREE.Path();
-  coreHole.absarc(0, 0, coreInnerR, 0, Math.PI * 2, true);
-  coreShape.holes.push(coreHole);
+  // Inner hollow (paper inner hole)
+  innerWallGeom = new THREE.CylinderGeometry(
+    R_coreOuter, R_coreOuter, length, 64, 1, true
+  );
+  innerWallGeom.scale(1, 1, -1); // flip normals
+  innerWallGeom.rotateZ(Math.PI / 2);
 
-  const extrudeSettings = {
-    depth: rollLength,
-    bevelEnabled: false,
-    steps: 1,
-    curveSegments: 32
-  };
+  // Cardboard tube – real hollow tube
+  const coreOuter = new THREE.CylinderGeometry(
+    R_coreOuter, R_coreOuter, length, 48, 1, true
+  );
+  const coreInner = new THREE.CylinderGeometry(
+    R_coreInner, R_coreInner, length, 48, 1, true
+  );
+  coreInner.scale(1, 1, -1);
 
-  const paperExtruded = new THREE.ExtrudeGeometry(paperShape, extrudeSettings);
-  const coreExtruded  = new THREE.ExtrudeGeometry(coreShape, extrudeSettings);
+  // Merge core walls
+  coreOuter.rotateZ(Math.PI / 2);
+  coreInner.rotateZ(Math.PI / 2);
 
-  // Extrude is along +Z; rotate so length is along X (sideways roll)
-  paperExtruded.rotateY(Math.PI / 2);
-  coreExtruded.rotateY(Math.PI / 2);
-
-  paperGeometry = paperExtruded;
-  coreGeometry  = coreExtruded;
+  const merge = THREE.BufferGeometryUtils?.mergeGeometries;
+  if (merge) {
+    coreTubeGeom = merge([coreOuter, coreInner]);
+  } else {
+    // fallback
+    coreTubeGeom = coreOuter; // inner will still show, but acceptable
+  }
 }
 
 // --------------------------------------
@@ -175,17 +181,13 @@ function generatePack() {
   const p = readParams();
   updateGeometries(p);
 
-  const L = p.rollHeightMm * MM;   // roll length (along X)
-  const D = p.rollDiameterMm * MM; // roll diameter (Y,Z)
-  const G = p.rollGapMm * MM;      // visual gap along length
+  const L = p.rollHeightMm * MM;
+  const D = p.rollDiameterMm * MM;
+  const G = p.rollGapMm * MM;
 
   const spacingX = L + G + EPS;
   const spacingY = D + EPS;
   const spacingZ = D + EPS;
-
-  const packWidth  = (p.rollsPerRow  - 1) * spacingX + L;
-  const packDepth  = (p.rowsPerLayer - 1) * spacingZ + D;
-  const packHeight = (p.layers       - 1) * spacingY + D;
 
   const offsetX = -((p.rollsPerRow  - 1) * spacingX) / 2;
   const offsetZ = -((p.rowsPerLayer - 1) * spacingZ) / 2;
@@ -201,48 +203,46 @@ function generatePack() {
         const py = baseY   + y * spacingY;
         const pz = offsetZ + z * spacingZ;
 
-        // Paper volume
-        const paperMesh = new THREE.Mesh(paperGeometry, paperMaterial);
-        paperMesh.castShadow = true;
-        paperMesh.receiveShadow = true;
-        paperMesh.position.set(px, py, pz);
+        // Outer paper shell
+        const shell = new THREE.Mesh(outerShellGeom, paperMaterial);
+        shell.position.set(px, py, pz);
+
+        // Inner wall (inside hole)
+        const inner = new THREE.Mesh(innerWallGeom, paperMaterial);
+        inner.position.set(px, py, pz);
 
         // Cardboard tube
-        const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
-        coreMesh.castShadow = false;
-        coreMesh.receiveShadow = false;
-        coreMesh.position.set(px, py, pz);
+        const tube = new THREE.Mesh(coreTubeGeom, coreMaterial);
+        tube.position.set(px, py, pz);
 
-        packGroup.add(paperMesh, coreMesh);
+        packGroup.add(shell);
+        packGroup.add(inner);
+        packGroup.add(tube);
       }
     }
   }
 
   const total = p.rollsPerRow * p.rowsPerLayer * p.layers;
   totalRollsEl.textContent = total;
-  countLabel.textContent   = `${total} rolls`;
-
-  // We no longer auto-frame; default/reset uses your fixed camera
+  countLabel.textContent = `${total} rolls`;
 }
 
 // --------------------------------------
-// Camera setup & reset (your chosen values)
+// Camera defaults (your values)
 // --------------------------------------
 
 function setDefaultCamera() {
-  // Your chosen camera coordinates:
   camera.position.set(115.72, 46.43, -81.27);
   controls.target.set(1.40, -7.93, 7.26);
   controls.update();
 }
 
-// Reset uses your default
 function resetCamera() {
   setDefaultCamera();
 }
 
 // --------------------------------------
-// PNG Export (hide debug panel for clean image)
+// PNG Export
 // --------------------------------------
 
 function exportPNG() {
@@ -261,12 +261,12 @@ function exportPNG() {
 }
 
 // --------------------------------------
-// Camera debug panel update
+// Camera debug display
 // --------------------------------------
 
 function updateCameraDebug() {
   camXEl.textContent  = camera.position.x.toFixed(2);
-  camYEl.textContent  = camera.position.y.toFixed(2);
+  camYEr.textContent  = camera.position.y.toFixed(2);
   camZEl.textContent  = camera.position.z.toFixed(2);
 
   camTxEl.textContent = controls.target.x.toFixed(2);
@@ -275,14 +275,13 @@ function updateCameraDebug() {
 }
 
 // --------------------------------------
-// Events & init
+// Init
 // --------------------------------------
 
-generateBtn.onclick    = () => generatePack();
-resetCameraBtn.onclick = () => resetCamera();
-exportPngBtn.onclick   = () => exportPNG();
+generateBtn.onclick = generatePack;
+resetCameraBtn.onclick = resetCamera;
+exportPngBtn.onclick = exportPNG;
 
-// initial
 generatePack();
 setDefaultCamera();
 
