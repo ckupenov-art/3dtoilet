@@ -168,7 +168,7 @@ function updateGeometries(p) {
   const L       = p.rollHeightMm * MM;
 
   // Outer paper cylinder
-  paperGeom = new THREE.CylinderGeometry(R_outer, R_outer, L, 64, 1, true);
+  paperGeom = new THREE.CylinderGeometry(R_outer, R_outer, L, 64, 1, false);
   paperGeom.rotateZ(Math.PI / 2);
 
   // Core cylinder (shorter)
