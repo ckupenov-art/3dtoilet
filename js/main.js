@@ -1,4 +1,4 @@
-// main.js – robust version: clean rolls, no artifacts, simple core, seam rings, camera debug
+// main.js – FINAL clean version (R2 + C1 + no artifacts + clean core + paper rings)
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -55,10 +55,10 @@ controls.enableDamping = true;
 controls.enablePan = true;
 
 // Lighting
-scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
-dirLight.position.set(10, 20, 12);
+dirLight.position.set(12, 22, 14);
 dirLight.castShadow = true;
 scene.add(dirLight);
 
@@ -70,7 +70,7 @@ scene.add(packGroup);
 // --------------------------------------
 
 const MM  = 0.1;   // 10 mm = 1 unit
-const EPS = 0.01;  // tiny offset
+const EPS = 0.01;
 
 function getInt(el, fallback) {
   const v = parseInt(el.value, 10);
@@ -92,12 +92,12 @@ function readParams() {
     coreDiameterMm: getFloat(coreDiameterEl, 45),
     rollHeightMm:   getFloat(rollHeightEl, 100),
 
-    rollGapMm:      getFloat(rollGapEl, 1.0)   // visual gap along length
+    rollGapMm:      getFloat(rollGapEl, 1.0)
   };
 }
 
 // --------------------------------------
-// Paper “texture” (subtle bump to soften shading)
+// Paper bump (subtle)
 // --------------------------------------
 
 function createPaperBumpTexture() {
@@ -107,21 +107,19 @@ function createPaperBumpTexture() {
   canvas.height = size;
   const ctx = canvas.getContext("2d");
 
-  const imageData = ctx.createImageData(size, size);
-  const data = imageData.data;
+  const img = ctx.createImageData(size, size);
+  const d = img.data;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const idx = (y * size + x) * 4;
-      const val = 210 + Math.random() * 20; // very subtle variation
-      data[idx]     = val;
-      data[idx + 1] = val;
-      data[idx + 2] = val;
-      data[idx + 3] = 255;
+      const i = (y * size + x) * 4;
+      const val = 210 + Math.random() * 20;
+      d[i] = d[i + 1] = d[i + 2] = val;
+      d[i + 3] = 255;
     }
   }
 
-  ctx.putImageData(imageData, 0, 0);
+  ctx.putImageData(img, 0, 0);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -135,26 +133,29 @@ const paperBumpTexture = createPaperBumpTexture();
 // Geometries
 // --------------------------------------
 
-let paperGeom   = null;
-let coreGeom    = null;
-let seamGeom    = null;
+let paperGeom = null;
+let coreGeom  = null;
+let seamGeom  = null;
+let paperRingGeom = null;
+let coreCapGeom   = null;
 
 const paperMaterial = new THREE.MeshStandardMaterial({
   color: 0xffffff,
   roughness: 0.45,
   metalness: 0.0,
   bumpMap: paperBumpTexture,
-  bumpScale: 0.015
+  bumpScale: 0.015,
+  side: THREE.DoubleSide
 });
 
 const coreMaterial = new THREE.MeshStandardMaterial({
   color: 0x9a7b5f,
-  roughness: 0.8,
+  roughness: 0.75,
   metalness: 0.0
 });
 
 const seamMaterial = new THREE.MeshStandardMaterial({
-  color: 0xd4d4d4,
+  color: 0xd6d6d6,
   roughness: 0.6,
   metalness: 0.0
 });
@@ -163,22 +164,24 @@ function updateGeometries(p) {
   if (paperGeom) paperGeom.dispose();
   if (coreGeom)  coreGeom.dispose();
   if (seamGeom)  seamGeom.dispose();
+  if (paperRingGeom) paperRingGeom.dispose();
+  if (coreCapGeom)   coreCapGeom.dispose();
 
   const R_outer = (p.rollDiameterMm / 2) * MM;
   const R_core  = (p.coreDiameterMm / 2) * MM;
   const L       = p.rollHeightMm * MM;
 
-  // Outer paper cylinder (closed ends)
+  // Main outer paper cylinder (closed)
   paperGeom = new THREE.CylinderGeometry(R_outer, R_outer, L, 64, 1, false);
   paperGeom.rotateZ(Math.PI / 2);
 
-  // Solid cardboard core cylinder (slightly shorter, so it looks "inside")
+  // Cardboard core cylinder (shorter, sits inside)
   const coreLength = L * 0.85;
-  coreGeom = new THREE.CylinderGeometry(R_core, R_core, coreLength, 32, 1, false);
+  coreGeom = new THREE.CylinderGeometry(R_core, R_core, coreLength, 48, 1, false);
   coreGeom.rotateZ(Math.PI / 2);
 
-  // Thin seam ring (R2) – small cylinder to create a line near each end
-  const seamThickness = 0.4 * MM; // 4 mm
+  // Thin seam ring near each end (R2)
+  const seamThickness = 0.4 * MM;
   seamGeom = new THREE.CylinderGeometry(
     R_outer * 1.001,
     R_outer * 1.001,
@@ -188,6 +191,14 @@ function updateGeometries(p) {
     false
   );
   seamGeom.rotateZ(Math.PI / 2);
+
+  // PAPER END RING – outer white ring (paper)
+  paperRingGeom = new THREE.RingGeometry(R_core, R_outer, 64);
+  paperRingGeom.rotateZ(Math.PI / 2);
+
+  // CORE DISC – inner brown disc
+  coreCapGeom = new THREE.CircleGeometry(R_core, 48);
+  coreCapGeom.rotateZ(Math.PI / 2);
 }
 
 // --------------------------------------
@@ -195,9 +206,7 @@ function updateGeometries(p) {
 // --------------------------------------
 
 function clearPack() {
-  while (packGroup.children.length) {
-    packGroup.remove(packGroup.children[0]);
-  }
+  while (packGroup.children.length) packGroup.remove(packGroup.children[0]);
 }
 
 function generatePack() {
@@ -208,9 +217,9 @@ function generatePack() {
   const D = p.rollDiameterMm * MM;
   const G = p.rollGapMm * MM;
 
-  const spacingX = L + G + EPS; // along length
-  const spacingY = D + EPS;     // vertical
-  const spacingZ = D + EPS;     // depth
+  const spacingX = L + G + EPS;
+  const spacingY = D + EPS;
+  const spacingZ = D + EPS;
 
   const offsetX = -((p.rollsPerRow  - 1) * spacingX) / 2;
   const offsetZ = -((p.rowsPerLayer - 1) * spacingZ) / 2;
@@ -226,20 +235,18 @@ function generatePack() {
         const py = baseY   + layer * spacingY;
         const pz = offsetZ + row * spacingZ;
 
-        // Paper cylinder
+        // PAPER CYLINDER
         const paper = new THREE.Mesh(paperGeom, paperMaterial);
         paper.castShadow = true;
         paper.receiveShadow = true;
         paper.position.set(px, py, pz);
 
-        // Cardboard core (solid cylinder, visually a core)
+        // CARDBOARD CORE
         const core = new THREE.Mesh(coreGeom, coreMaterial);
-        core.castShadow = false;
-        core.receiveShadow = false;
         core.position.set(px, py, pz);
 
-        // Seam rings near each end (R2 visual detail)
-        const seamOffset = (L / 2) - (0.8 * MM);
+        // SEAMS (R2)
+        const seamOffset = (L / 2) - (1.2 * MM);
 
         const seamFront = new THREE.Mesh(seamGeom, seamMaterial);
         seamFront.position.set(px + seamOffset, py, pz);
@@ -247,7 +254,29 @@ function generatePack() {
         const seamBack = new THREE.Mesh(seamGeom, seamMaterial);
         seamBack.position.set(px - seamOffset, py, pz);
 
-        packGroup.add(paper, core, seamFront, seamBack);
+        // PAPER WHITE RING (outer ring)
+        const ringFront = new THREE.Mesh(paperRingGeom, paperMaterial);
+        const ringBack  = new THREE.Mesh(paperRingGeom, paperMaterial);
+        ringFront.position.set(px + L/2 + 0.0001, py, pz);
+        ringBack.position.set(px - L/2 - 0.0001, py, pz);
+
+        // CORE INNER DISC (brown circle)
+        const capFront = new THREE.Mesh(coreCapGeom, coreMaterial);
+        const capBack  = new THREE.Mesh(coreCapGeom, coreMaterial);
+        capFront.position.set(px + L/2 + 0.0002, py, pz);
+        capBack.position.set(px - L/2 - 0.0002, py, pz);
+
+        // Add all parts
+        packGroup.add(
+          paper,
+          core,
+          seamFront,
+          seamBack,
+          ringFront,
+          ringBack,
+          capFront,
+          capBack
+        );
       }
     }
   }
@@ -258,7 +287,7 @@ function generatePack() {
 }
 
 // --------------------------------------
-// Camera defaults (your values)
+// Camera defaults
 // --------------------------------------
 
 function setDefaultCamera() {
@@ -272,26 +301,26 @@ function resetCamera() {
 }
 
 // --------------------------------------
-// PNG Export (hide debug panel for clean image)
+// PNG Export
 // --------------------------------------
 
 function exportPNG() {
-  const prevDisplay = camDebugPanel.style.display || "";
+  const prev = camDebugPanel.style.display;
   camDebugPanel.style.display = "none";
 
   renderer.render(scene, camera);
-  const dataURL = renderer.domElement.toDataURL("image/png");
+  const url = renderer.domElement.toDataURL("image/png");
 
   const a = document.createElement("a");
-  a.href = dataURL;
+  a.href = url;
   a.download = "toilet-pack.png";
   a.click();
 
-  camDebugPanel.style.display = prevDisplay;
+  camDebugPanel.style.display = prev;
 }
 
 // --------------------------------------
-// Camera debug panel update
+// Camera debug update
 // --------------------------------------
 
 function updateCameraDebug() {
@@ -305,7 +334,7 @@ function updateCameraDebug() {
 }
 
 // --------------------------------------
-// Events & init
+// Init
 // --------------------------------------
 
 generateBtn.onclick    = () => generatePack();
