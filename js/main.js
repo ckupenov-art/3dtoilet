@@ -1,5 +1,5 @@
 // js/main.js
-// Touching spacing in all directions + camera debug panel + PNG export
+// Correct touching spacing for SIDEWAYS rolls + camera debug + PNG export
 
 import * as THREE from 'three';
 import { OrbitControls } from 'https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js';
@@ -44,7 +44,7 @@ const camera = new THREE.PerspectiveCamera(
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-// Transparent clear color so PNG has transparency
+// transparent clear color so PNG has transparency
 renderer.setClearColor(0x000000, 0);
 renderer.shadowMap.enabled = true;
 container.appendChild(renderer.domElement);
@@ -52,7 +52,7 @@ container.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.enablePan = true;
+controls.enablePan = true; // unrestricted pan
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
@@ -69,13 +69,12 @@ const packGroup = new THREE.Group();
 scene.add(packGroup);
 
 // -----------------------------------------------------------------------------
-// 2. Helpers – reading inputs and spacing
+// 2. Helpers – reading inputs and constants
 // -----------------------------------------------------------------------------
 
-const MM_TO_UNITS = 0.1;      // 10 mm = 1 scene unit
-const EPSILON     = 0.01;     // small extra to avoid z-fighting (~0.1 mm)
+const MM_TO_UNITS = 0.1; // 10 mm = 1 scene unit
+const EPSILON     = 0.01; // ~0.1 mm: tiny gap to avoid z-fighting
 
-// input readers
 function getInt(el, fallback) {
   const v = parseInt(el.value, 10);
   return Number.isFinite(v) && v > 0 ? v : fallback;
@@ -105,7 +104,7 @@ function readParams() {
 }
 
 // -----------------------------------------------------------------------------
-// 3. Roll geometries & materials (recreated if dimensions change)
+// 3. Geometries & materials
 // -----------------------------------------------------------------------------
 
 let outerGeometry = null;
@@ -145,7 +144,7 @@ function updateGeometries(params) {
 }
 
 // -----------------------------------------------------------------------------
-// 4. Pack generation – touching spacing in X/Y/Z
+// 4. Pack generation – TOUCHING spacing for SIDEWAYS rolls
 // -----------------------------------------------------------------------------
 
 function clearPack() {
@@ -161,19 +160,23 @@ function generatePack() {
 
   const { rollsPerRow, rowsPerLayer, layers } = params;
 
-  const rollRadius = (params.rollDiameterMm / 2) * MM_TO_UNITS;
-  const rollHeight = params.rollHeightMm * MM_TO_UNITS;
+  const rollRadius   = (params.rollDiameterMm / 2) * MM_TO_UNITS;
+  const rollDiameter = params.rollDiameterMm * MM_TO_UNITS;
+  const rollLength   = params.rollHeightMm   * MM_TO_UNITS; // along X when sideways
 
-  // TOUCHING SPACING:
-  // center-to-center spacing = size + tiny epsilon
-  const spacingX = params.rollDiameterMm * MM_TO_UNITS + EPSILON;
-  const spacingZ = params.rollDiameterMm * MM_TO_UNITS + EPSILON;
-  const spacingY = rollHeight + EPSILON;
+  // SIDEWAYS rolls (rotation.z = PI/2)
+  //  X axis → roll length (height)
+  //  Y axis → roll diameter
+  //  Z axis → roll diameter
 
-  // Total pack size (approx) for camera framing
-  const packWidth  = (rollsPerRow  - 1) * spacingX + 2 * rollRadius;
-  const packDepth  = (rowsPerLayer - 1) * spacingZ + 2 * rollRadius;
-  const packHeight = (layers       - 1) * spacingY + rollHeight;
+  const spacingX = rollLength   + EPSILON;   // along length
+  const spacingY = rollDiameter + EPSILON;   // stacked layers
+  const spacingZ = rollDiameter + EPSILON;   // rows front/back
+
+  // Total pack size (for camera framing)
+  const packWidth  = (rollsPerRow  - 1) * spacingX + rollLength;
+  const packDepth  = (rowsPerLayer - 1) * spacingZ + rollDiameter;
+  const packHeight = (layers       - 1) * spacingY + rollDiameter;
 
   // Center pack around (0,0,0)
   const offsetX = -((rollsPerRow  - 1) * spacingX) / 2;
@@ -222,7 +225,7 @@ function generatePack() {
 
 function frameCameraOnPack(width, height, depth) {
   const maxDim   = Math.max(width, height, depth);
-  const distance = maxDim * 2.2; // tweak multiplier if needed
+  const distance = maxDim * 2.2; // tweak multiplier if you want closer/further
 
   camera.position.set(distance, distance * 0.75, distance);
   controls.target.set(0, 0, 0);
@@ -231,16 +234,17 @@ function frameCameraOnPack(width, height, depth) {
 
 function resetCamera() {
   const params = readParams();
-  const rollRadius = (params.rollDiameterMm / 2) * MM_TO_UNITS;
-  const rollHeight = params.rollHeightMm * MM_TO_UNITS;
 
-  const spacingX = params.rollDiameterMm * MM_TO_UNITS + EPSILON;
-  const spacingZ = params.rollDiameterMm * MM_TO_UNITS + EPSILON;
-  const spacingY = rollHeight + EPSILON;
+  const rollDiameter = params.rollDiameterMm * MM_TO_UNITS;
+  const rollLength   = params.rollHeightMm   * MM_TO_UNITS;
 
-  const packWidth  = (params.rollsPerRow  - 1) * spacingX + 2 * rollRadius;
-  const packDepth  = (params.rowsPerLayer - 1) * spacingZ + 2 * rollRadius;
-  const packHeight = (params.layers       - 1) * spacingY + rollHeight;
+  const spacingX = rollLength   + EPSILON;
+  const spacingY = rollDiameter + EPSILON;
+  const spacingZ = rollDiameter + EPSILON;
+
+  const packWidth  = (params.rollsPerRow  - 1) * spacingX + rollLength;
+  const packDepth  = (params.rowsPerLayer - 1) * spacingZ + rollDiameter;
+  const packHeight = (params.layers       - 1) * spacingY + rollDiameter;
 
   frameCameraOnPack(packWidth, packHeight, packDepth);
 }
@@ -250,14 +254,12 @@ function resetCamera() {
 // -----------------------------------------------------------------------------
 
 function exportPNG() {
-  // Hide debug panel for export (E1)
   let prevDisplay = '';
   if (camDebugPanel) {
     prevDisplay = camDebugPanel.style.display || '';
     camDebugPanel.style.display = 'none';
   }
 
-  // Render a fresh frame
   renderer.render(scene, camera);
 
   const dataURL = renderer.domElement.toDataURL('image/png');
@@ -268,14 +270,13 @@ function exportPNG() {
   link.click();
   document.body.removeChild(link);
 
-  // Restore debug panel
   if (camDebugPanel) {
     camDebugPanel.style.display = prevDisplay;
   }
 }
 
 // -----------------------------------------------------------------------------
-// 7. Camera debug panel update (C1/D2)
+// 7. Camera debug panel update
 // -----------------------------------------------------------------------------
 
 function updateCameraDebug() {
@@ -314,7 +315,7 @@ if (exportPngBtn) {
   });
 }
 
-// Initial pack + camera
+// Initial pack
 generatePack();
 
 // Resize handler
