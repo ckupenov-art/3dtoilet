@@ -1,4 +1,4 @@
-// WORKING STABLE VERSION — debug version to test openEnded value
+// WORKING STABLE VERSION — debug version to test openEnded value (correct placement)
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -192,11 +192,11 @@ function clearPack() {
 
 function generatePack() {
 
-  // ➤ DEBUG LINE HERE (safe placement)
-  console.log("paper openEnded:", paperGeom?.parameters?.openEnded);
-
   const p = readParams();
   updateGeometries(p);
+
+  // DEBUG LINE (correct place)
+  console.log("paper openEnded:", paperGeom?.parameters?.openEnded);
 
   const L = p.rollHeightMm * MM;
   const D = p.rollDiameterMm * MM;
