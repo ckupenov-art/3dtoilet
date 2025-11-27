@@ -1,4 +1,4 @@
-// main.js – clean rolls (no artifacts) + paper bump + paper end caps + camera debug
+// main.js – robust version: clean rolls, no artifacts, simple core, seam rings, camera debug
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -70,7 +70,7 @@ scene.add(packGroup);
 // --------------------------------------
 
 const MM  = 0.1;   // 10 mm = 1 unit
-const EPS = 0.01;  // small offset to avoid z-fighting
+const EPS = 0.01;  // tiny offset
 
 function getInt(el, fallback) {
   const v = parseInt(el.value, 10);
@@ -97,11 +97,11 @@ function readParams() {
 }
 
 // --------------------------------------
-// Paper bump texture (S1 – subtle paper normal/bump)
+// Paper “texture” (subtle bump to soften shading)
 // --------------------------------------
 
 function createPaperBumpTexture() {
-  const size = 128;
+  const size = 64;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -112,9 +112,8 @@ function createPaperBumpTexture() {
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      // simple noise between 110–145 (out of 255)
       const idx = (y * size + x) * 4;
-      const val = 110 + Math.random() * 35; // subtle variation
+      const val = 210 + Math.random() * 20; // very subtle variation
       data[idx]     = val;
       data[idx + 1] = val;
       data[idx + 2] = val;
@@ -124,90 +123,71 @@ function createPaperBumpTexture() {
 
   ctx.putImageData(imageData, 0, 0);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(4, 4); // tile fine pattern
-  return texture;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 1);
+  return tex;
 }
 
 const paperBumpTexture = createPaperBumpTexture();
 
 // --------------------------------------
-// Geometries (shell + inner hollow + cardboard core + end caps)
+// Geometries
 // --------------------------------------
 
-let paperOuterGeom = null;
-let paperInnerGeom = null;
-let paperCapGeom   = null;
-let coreOuterGeom  = null;
-let coreInnerGeom  = null;
+let paperGeom   = null;
+let coreGeom    = null;
+let seamGeom    = null;
 
 const paperMaterial = new THREE.MeshStandardMaterial({
   color: 0xffffff,
-  roughness: 0.5,
+  roughness: 0.45,
   metalness: 0.0,
-  side: THREE.DoubleSide,
   bumpMap: paperBumpTexture,
-  bumpScale: 0.02
+  bumpScale: 0.015
 });
 
 const coreMaterial = new THREE.MeshStandardMaterial({
-  color: 0x9a7b5f, // cardboard
+  color: 0x9a7b5f,
   roughness: 0.8,
-  metalness: 0.0,
-  side: THREE.DoubleSide
+  metalness: 0.0
+});
+
+const seamMaterial = new THREE.MeshStandardMaterial({
+  color: 0xd4d4d4,
+  roughness: 0.6,
+  metalness: 0.0
 });
 
 function updateGeometries(p) {
-  // Dispose old if exist
-  if (paperOuterGeom) paperOuterGeom.dispose();
-  if (paperInnerGeom) paperInnerGeom.dispose();
-  if (paperCapGeom)   paperCapGeom.dispose();
-  if (coreOuterGeom)  coreOuterGeom.dispose();
-  if (coreInnerGeom)  coreInnerGeom.dispose();
+  if (paperGeom) paperGeom.dispose();
+  if (coreGeom)  coreGeom.dispose();
+  if (seamGeom)  seamGeom.dispose();
 
-  const R_outer     = (p.rollDiameterMm / 2) * MM;
-  const R_coreOuter = (p.coreDiameterMm / 2) * MM;
-  const length      = p.rollHeightMm * MM;
+  const R_outer = (p.rollDiameterMm / 2) * MM;
+  const R_core  = (p.coreDiameterMm / 2) * MM;
+  const L       = p.rollHeightMm * MM;
 
-  // Small gap between paper inner and core outer to avoid z-fighting
-  const gapPaperCore = 0.2 * MM; // 2 mm in real units
-  const R_paperInner = R_coreOuter + gapPaperCore;
+  // Outer paper cylinder (closed ends)
+  paperGeom = new THREE.CylinderGeometry(R_outer, R_outer, L, 64, 1, false);
+  paperGeom.rotateZ(Math.PI / 2);
 
-  // Cardboard tube thickness
-  const tubeThickness = Math.min(R_coreOuter * 0.25, 0.8 * MM);
-  const R_coreInner   = Math.max(R_coreOuter - tubeThickness, R_coreOuter * 0.6);
+  // Solid cardboard core cylinder (slightly shorter, so it looks "inside")
+  const coreLength = L * 0.85;
+  coreGeom = new THREE.CylinderGeometry(R_core, R_core, coreLength, 32, 1, false);
+  coreGeom.rotateZ(Math.PI / 2);
 
-  // PAPER OUTER SHELL – open-ended cylinder
-  paperOuterGeom = new THREE.CylinderGeometry(
-    R_outer, R_outer, length, 64, 1, true
+  // Thin seam ring (R2) – small cylinder to create a line near each end
+  const seamThickness = 0.4 * MM; // 4 mm
+  seamGeom = new THREE.CylinderGeometry(
+    R_outer * 1.001,
+    R_outer * 1.001,
+    seamThickness,
+    64,
+    1,
+    false
   );
-  paperOuterGeom.rotateZ(Math.PI / 2);
-
-  // PAPER INNER HOLE – slightly larger radius than core outer
-  paperInnerGeom = new THREE.CylinderGeometry(
-    R_paperInner, R_paperInner, length, 64, 1, true
-  );
-  paperInnerGeom.scale(1, 1, -1); // flip normals
-  paperInnerGeom.rotateZ(Math.PI / 2);
-
-  // PAPER END CAP RING (B1 – filled paper look)
-  // Ring between paper inner radius and outer radius, in YZ-plane
-  paperCapGeom = new THREE.RingGeometry(R_paperInner, R_outer, 64);
-  paperCapGeom.rotateZ(Math.PI / 2);
-
-  // CORE OUTER WALL
-  coreOuterGeom = new THREE.CylinderGeometry(
-    R_coreOuter, R_coreOuter, length, 48, 1, true
-  );
-  coreOuterGeom.rotateZ(Math.PI / 2);
-
-  // CORE INNER WALL – inverted normals
-  coreInnerGeom = new THREE.CylinderGeometry(
-    R_coreInner, R_coreInner, length, 48, 1, true
-  );
-  coreInnerGeom.scale(1, 1, -1);
-  coreInnerGeom.rotateZ(Math.PI / 2);
+  seamGeom.rotateZ(Math.PI / 2);
 }
 
 // --------------------------------------
@@ -224,17 +204,17 @@ function generatePack() {
   const p = readParams();
   updateGeometries(p);
 
-  const L = p.rollHeightMm * MM;   // length (X axis)
-  const D = p.rollDiameterMm * MM; // diameter (Y,Z)
-  const G = p.rollGapMm * MM;      // user gap along X
+  const L = p.rollHeightMm * MM;
+  const D = p.rollDiameterMm * MM;
+  const G = p.rollGapMm * MM;
 
-  const spacingX = L + G + EPS;
-  const spacingY = D + EPS;
-  const spacingZ = D + EPS;
+  const spacingX = L + G + EPS; // along length
+  const spacingY = D + EPS;     // vertical
+  const spacingZ = D + EPS;     // depth
 
   const offsetX = -((p.rollsPerRow  - 1) * spacingX) / 2;
   const offsetZ = -((p.rowsPerLayer - 1) * spacingZ) / 2;
-  const baseY   = -((p.layers - 1) * spacingY) / 2;
+  const baseY   = -((p.layers       - 1) * spacingY) / 2;
 
   clearPack();
 
@@ -246,37 +226,28 @@ function generatePack() {
         const py = baseY   + layer * spacingY;
         const pz = offsetZ + row * spacingZ;
 
-        // PAPER – outer shell
-        const shell = new THREE.Mesh(paperOuterGeom, paperMaterial);
-        shell.castShadow = true;
-        shell.receiveShadow = true;
-        shell.position.set(px, py, pz);
+        // Paper cylinder
+        const paper = new THREE.Mesh(paperGeom, paperMaterial);
+        paper.castShadow = true;
+        paper.receiveShadow = true;
+        paper.position.set(px, py, pz);
 
-        // PAPER – inner wall
-        const inner = new THREE.Mesh(paperInnerGeom, paperMaterial);
-        inner.castShadow = false;
-        inner.receiveShadow = false;
-        inner.position.set(px, py, pz);
+        // Cardboard core (solid cylinder, visually a core)
+        const core = new THREE.Mesh(coreGeom, coreMaterial);
+        core.castShadow = false;
+        core.receiveShadow = false;
+        core.position.set(px, py, pz);
 
-        // PAPER – end caps front/back (B1)
-        const capFront = new THREE.Mesh(paperCapGeom, paperMaterial);
-        capFront.position.set(px + L / 2, py, pz);
+        // Seam rings near each end (R2 visual detail)
+        const seamOffset = (L / 2) - (0.8 * MM);
 
-        const capBack = new THREE.Mesh(paperCapGeom, paperMaterial);
-        capBack.position.set(px - L / 2, py, pz);
+        const seamFront = new THREE.Mesh(seamGeom, seamMaterial);
+        seamFront.position.set(px + seamOffset, py, pz);
 
-        // CORE – outer & inner walls
-        const coreOuter = new THREE.Mesh(coreOuterGeom, coreMaterial);
-        coreOuter.castShadow = false;
-        coreOuter.receiveShadow = false;
-        coreOuter.position.set(px, py, pz);
+        const seamBack = new THREE.Mesh(seamGeom, seamMaterial);
+        seamBack.position.set(px - seamOffset, py, pz);
 
-        const coreInner = new THREE.Mesh(coreInnerGeom, coreMaterial);
-        coreInner.castShadow = false;
-        coreInner.receiveShadow = false;
-        coreInner.position.set(px, py, pz);
-
-        packGroup.add(shell, inner, capFront, capBack, coreOuter, coreInner);
+        packGroup.add(paper, core, seamFront, seamBack);
       }
     }
   }
