@@ -1,4 +1,4 @@
-// main.js – clean version with visible core and open roll ends (A)
+// main.js – clean version with realistic textured roll ends
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -69,7 +69,7 @@ scene.add(packGroup);
 // Helpers
 // --------------------------------------
 
-const MM  = 0.1;   // 10 mm = 1 unit
+const MM  = 0.1;   // 10 mm = 1 scene unit
 const EPS = 0.01;  // tiny spacing epsilon
 
 function getInt(el, fallback) {
@@ -97,10 +97,10 @@ function readParams() {
 }
 
 // --------------------------------------
-// Subtle paper bump texture
+// Subtle paper bump texture for the side
 // --------------------------------------
 
-function createPaperBumpTexture() {
+function createPaperSideBumpTexture() {
   const size = 64;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
@@ -123,30 +123,82 @@ function createPaperBumpTexture() {
   return tex;
 }
 
-const paperBumpTexture = createPaperBumpTexture();
+const paperSideBumpTexture = createPaperSideBumpTexture();
+
+// --------------------------------------
+// Roll end texture (layered paper + core)
+// --------------------------------------
+
+let endTexture = null;
+
+function createRollEndTexture(outerRadius, coreRadius) {
+  if (endTexture) {
+    endTexture.dispose();
+  }
+
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+
+  const cx = size / 2;
+  const cy = size / 2;
+  const outer = size / 2 * 0.98; // slight margin
+
+  // Convert radii to texture space
+  const coreOuter = outer * (coreRadius / outerRadius); // cardboard radius
+  const holeRadius = coreOuter * 0.55; // inner hole
+
+  // Background circle (paper)
+  ctx.fillStyle = "#f5f5f5";
+  ctx.beginPath();
+  ctx.arc(cx, cy, outer, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Concentric "paper layers"
+  ctx.strokeStyle = "rgba(220,220,220,0.7)";
+  ctx.lineWidth = 1;
+  const rings = 7;
+  for (let i = 0; i < rings; i++) {
+    const r = holeRadius + (outer - holeRadius) * (i / rings);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Cardboard ring
+  ctx.fillStyle = "#9a7b5f";
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreOuter, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Inner hole (dark)
+  ctx.fillStyle = "#3a3a3a";
+  ctx.beginPath();
+  ctx.arc(cx, cy, holeRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  endTexture = tex;
+  return tex;
+}
 
 // --------------------------------------
 // Geometries & Materials
 // --------------------------------------
 
-let paperGeom     = null; // outer shell
-let coreGeom      = null; // inner cardboard cylinder
-let seamGeom      = null; // ring band on side
-let paperRingGeom = null; // white ring at end
-let coreRingGeom  = null; // brown ring at end
+let paperGeom   = null; // outer shell
+let seamGeom    = null; // side seam
+let endGeom     = null; // end disc
 
-const paperMaterial = new THREE.MeshStandardMaterial({
+const paperSideMaterial = new THREE.MeshStandardMaterial({
   color: 0xffffff,
   roughness: 0.45,
   metalness: 0.0,
-  bumpMap: paperBumpTexture,
+  bumpMap: paperSideBumpTexture,
   bumpScale: 0.015
-});
-
-const coreMaterial = new THREE.MeshStandardMaterial({
-  color: 0x9a7b5f,
-  roughness: 0.75,
-  metalness: 0.0
 });
 
 const seamMaterial = new THREE.MeshStandardMaterial({
@@ -155,28 +207,26 @@ const seamMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.0
 });
 
+const endMaterial = new THREE.MeshStandardMaterial({
+  roughness: 0.5,
+  metalness: 0.0
+});
+
 function updateGeometries(p) {
-  if (paperGeom)     paperGeom.dispose();
-  if (coreGeom)      coreGeom.dispose();
-  if (seamGeom)      seamGeom.dispose();
-  if (paperRingGeom) paperRingGeom.dispose();
-  if (coreRingGeom)  coreRingGeom.dispose();
+  if (paperGeom) paperGeom.dispose();
+  if (seamGeom)  seamGeom.dispose();
+  if (endGeom)   endGeom.dispose();
 
   const R_outer = (p.rollDiameterMm / 2) * MM;
   const R_core  = (p.coreDiameterMm / 2) * MM;
   const L       = p.rollHeightMm * MM;
 
-  // Outer paper cylinder – OPEN ENDS
+  // Outer paper cylinder – open ends, oriented along X
   paperGeom = new THREE.CylinderGeometry(R_outer, R_outer, L, 64, 1, true);
   paperGeom.rotateZ(Math.PI / 2);
 
-  // Cardboard core – slightly shorter, sits inside
-  const coreLength = L * 0.85;
-  coreGeom = new THREE.CylinderGeometry(R_core, R_core, coreLength, 48, 1, true);
-  coreGeom.rotateZ(Math.PI / 2);
-
-  // Seam ring (R2) – small band around outer surface
-  const seamThickness = 0.4 * MM;
+  // Seam ring (small band near ends)
+  const seamThickness = 0.3 * MM;
   seamGeom = new THREE.CylinderGeometry(
     R_outer * 1.002,
     R_outer * 1.002,
@@ -187,13 +237,14 @@ function updateGeometries(p) {
   );
   seamGeom.rotateZ(Math.PI / 2);
 
-  // White paper ring at the ends: from core radius to outer radius
-  paperRingGeom = new THREE.RingGeometry(R_core, R_outer, 64);
-  paperRingGeom.rotateZ(Math.PI / 2);
+  // End disc – flat circle facing X axis
+  endGeom = new THREE.CircleGeometry(R_outer, 64);
+  endGeom.rotateY(Math.PI / 2); // face +/-X
 
-  // Brown core ring: from center to core radius
-  coreRingGeom = new THREE.RingGeometry(0, R_core, 48);
-  coreRingGeom.rotateZ(Math.PI / 2);
+  // Update end texture based on current core/outer radii
+  const endTex = createRollEndTexture(R_outer, R_core);
+  endMaterial.map = endTex;
+  endMaterial.needsUpdate = true;
 }
 
 // --------------------------------------
@@ -230,48 +281,33 @@ function generatePack() {
         const py = baseY   + layer * spacingY;
         const pz = offsetZ + row * spacingZ;
 
-        // PAPER CYLINDER
-        const paper = new THREE.Mesh(paperGeom, paperMaterial);
+        // PAPER SIDE
+        const paper = new THREE.Mesh(paperGeom, paperSideMaterial);
         paper.castShadow = true;
         paper.receiveShadow = true;
         paper.position.set(px, py, pz);
 
-        // CARDBOARD CORE CYLINDER
-        const core = new THREE.Mesh(coreGeom, coreMaterial);
-        core.castShadow = false;
-        core.receiveShadow = false;
-        core.position.set(px, py, pz);
-
-        // SEAM RINGS on side (slightly in from ends)
+        // SIDE SEAMS
         const seamOffset = (L / 2) - (1.2 * MM);
         const seamFront = new THREE.Mesh(seamGeom, seamMaterial);
         const seamBack  = new THREE.Mesh(seamGeom, seamMaterial);
         seamFront.position.set(px + seamOffset, py, pz);
         seamBack.position.set(px - seamOffset, py, pz);
 
-        // WHITE PAPER RINGS AT ENDS
-        const ringFront = new THREE.Mesh(paperRingGeom, paperMaterial);
-        ringFront.position.set(px + L / 2 + 0.0001, py, pz);
+        // END CAPS (layered paper + core texture)
+        const endFront = new THREE.Mesh(endGeom, endMaterial);
+        endFront.position.set(px + L / 2 + 0.0001, py, pz);
 
-        const ringBack = new THREE.Mesh(paperRingGeom, paperMaterial);
-        ringBack.position.set(px - L / 2 - 0.0001, py, pz);
-
-        // BROWN CORE RINGS AT ENDS (inside hole)
-        const coreFront = new THREE.Mesh(coreRingGeom, coreMaterial);
-        coreFront.position.set(px + L / 2 + 0.0002, py, pz);
-
-        const coreBack = new THREE.Mesh(coreRingGeom, coreMaterial);
-        coreBack.position.set(px - L / 2 - 0.0002, py, pz);
+        const endBack = new THREE.Mesh(endGeom, endMaterial);
+        endBack.position.set(px - L / 2 - 0.0001, py, pz);
+        endBack.rotation.y += Math.PI; // flip so texture faces outward
 
         packGroup.add(
           paper,
-          core,
           seamFront,
           seamBack,
-          ringFront,
-          ringBack,
-          coreFront,
-          coreBack
+          endFront,
+          endBack
         );
       }
     }
