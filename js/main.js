@@ -1,8 +1,8 @@
-// main.js – perfect roll geometry (P1) + adjustable gap + camera debug + smooth rendering
+// main.js – clean rolls (outer shell + inner hollow + cardboard core),
+// adjustable gap, camera debug, your default camera
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
-import * as BufferGeometryUtils from "https://unpkg.com/three@0.165.0/examples/jsm/utils/BufferGeometryUtils.js";
 
 // DOM elements
 const container       = document.getElementById("scene-container");
@@ -32,10 +32,10 @@ const camDebugPanel = document.getElementById("camera-debug");
 
 // --------------------------------------
 // Scene Setup
-//---------------------------------------
+// --------------------------------------
 
 const scene = new THREE.Scene();
-scene.background = null;
+scene.background = null; // transparent
 
 const camera = new THREE.PerspectiveCamera(
   45,
@@ -68,10 +68,10 @@ scene.add(packGroup);
 
 // --------------------------------------
 // Helpers
-//---------------------------------------
+// --------------------------------------
 
 const MM  = 0.1;   // 10 mm = 1 unit
-const EPS = 0.01;  // small offset
+const EPS = 0.01;  // small offset to avoid z-fighting
 
 function getInt(el, fallback) {
   const v = parseInt(el.value, 10);
@@ -93,17 +93,18 @@ function readParams() {
     coreDiameterMm: getFloat(coreDiameterEl, 45),
     rollHeightMm:   getFloat(rollHeightEl, 100),
 
-    rollGapMm:      getFloat(rollGapEl, 1.0)
+    rollGapMm:      getFloat(rollGapEl, 1.0)   // visual gap along length
   };
 }
 
 // --------------------------------------
-// PERFECT ROLL GEOMETRY (P1)
-//---------------------------------------
+// Geometries (shell + inner hollow + cardboard core)
+// --------------------------------------
 
-let outerShellGeom = null;
-let innerWallGeom  = null;
-let coreTubeGeom   = null;
+let paperOuterGeom = null;
+let paperInnerGeom = null;
+let coreOuterGeom  = null;
+let coreInnerGeom  = null;
 
 const paperMaterial = new THREE.MeshStandardMaterial({
   color: 0xffffff,
@@ -120,50 +121,50 @@ const coreMaterial = new THREE.MeshStandardMaterial({
 });
 
 function updateGeometries(p) {
+  // Dispose old if exist
+  if (paperOuterGeom) paperOuterGeom.dispose();
+  if (paperInnerGeom) paperInnerGeom.dispose();
+  if (coreOuterGeom)  coreOuterGeom.dispose();
+  if (coreInnerGeom)  coreInnerGeom.dispose();
 
-  if (outerShellGeom) outerShellGeom.dispose();
-  if (innerWallGeom)  innerWallGeom.dispose();
-  if (coreTubeGeom)   coreTubeGeom.dispose();
-
-  const R_outer = (p.rollDiameterMm / 2) * MM;
+  const R_outer     = (p.rollDiameterMm / 2) * MM;
   const R_coreOuter = (p.coreDiameterMm / 2) * MM;
-  const length = p.rollHeightMm * MM;
+  const length      = p.rollHeightMm * MM;
 
   // Cardboard tube thickness
   const tubeThickness = Math.min(R_coreOuter * 0.25, 0.8 * MM);
-  const R_coreInner = Math.max(R_coreOuter - tubeThickness, R_coreOuter * 0.6);
+  const R_coreInner   = Math.max(R_coreOuter - tubeThickness, R_coreOuter * 0.6);
 
-  // Outer paper shell
-  outerShellGeom = new THREE.CylinderGeometry(
+  // PAPER OUTER SHELL – open-ended cylinder
+  paperOuterGeom = new THREE.CylinderGeometry(
     R_outer, R_outer, length, 64, 1, true
   );
-  outerShellGeom.rotateZ(Math.PI / 2);
+  paperOuterGeom.rotateZ(Math.PI / 2);
 
-  // Inner paper hole
-  innerWallGeom = new THREE.CylinderGeometry(
+  // PAPER INNER HOLE – inverted normals cylinder
+  paperInnerGeom = new THREE.CylinderGeometry(
     R_coreOuter, R_coreOuter, length, 64, 1, true
   );
-  innerWallGeom.scale(1, 1, -1);
-  innerWallGeom.rotateZ(Math.PI / 2);
+  paperInnerGeom.scale(1, 1, -1); // flip normals
+  paperInnerGeom.rotateZ(Math.PI / 2);
 
-  // Cardboard tube geometry
-  const coreOuter = new THREE.CylinderGeometry(
+  // CORE OUTER WALL
+  coreOuterGeom = new THREE.CylinderGeometry(
     R_coreOuter, R_coreOuter, length, 48, 1, true
   );
-  const coreInner = new THREE.CylinderGeometry(
+  coreOuterGeom.rotateZ(Math.PI / 2);
+
+  // CORE INNER WALL – inverted normals
+  coreInnerGeom = new THREE.CylinderGeometry(
     R_coreInner, R_coreInner, length, 48, 1, true
   );
-  coreInner.scale(1, 1, -1);
-
-  coreOuter.rotateZ(Math.PI / 2);
-  coreInner.rotateZ(Math.PI / 2);
-
-  coreTubeGeom = BufferGeometryUtils.mergeGeometries([coreOuter, coreInner]);
+  coreInnerGeom.scale(1, 1, -1);
+  coreInnerGeom.rotateZ(Math.PI / 2);
 }
 
 // --------------------------------------
 // Pack generation
-//---------------------------------------
+// --------------------------------------
 
 function clearPack() {
   while (packGroup.children.length) {
@@ -175,10 +176,11 @@ function generatePack() {
   const p = readParams();
   updateGeometries(p);
 
-  const L = p.rollHeightMm * MM;
-  const D = p.rollDiameterMm * MM;
-  const G = p.rollGapMm * MM;
+  const L = p.rollHeightMm * MM;   // length (X)
+  const D = p.rollDiameterMm * MM; // diameter (Y,Z)
+  const G = p.rollGapMm * MM;      // adjustable gap along X
 
+  // Sideways rolls:
   const spacingX = L + G + EPS;
   const spacingY = D + EPS;
   const spacingZ = D + EPS;
@@ -189,29 +191,51 @@ function generatePack() {
 
   clearPack();
 
-  for (let y = 0; y < p.layers; y++) {
-    for (let z = 0; z < p.rowsPerLayer; z++) {
-      for (let x = 0; x < p.rollsPerRow; x++) {
+  for (let layer = 0; layer < p.layers; layer++) {
+    for (let row = 0; row < p.rowsPerLayer; row++) {
+      for (let col = 0; col < p.rollsPerRow; col++) {
 
-        const px = offsetX + x * spacingX;
-        const py = baseY   + y * spacingY;
-        const pz = offsetZ + z * spacingZ;
+        const px = offsetX + col * spacingX;
+        const py = baseY   + layer * spacingY;
+        const pz = offsetZ + row * spacingZ;
 
-        packGroup.add(new THREE.Mesh(outerShellGeom, paperMaterial).setPosition(px, py, pz));
-        packGroup.add(new THREE.Mesh(innerWallGeom, paperMaterial).setPosition(px, py, pz));
-        packGroup.add(new THREE.Mesh(coreTubeGeom, coreMaterial).setPosition(px, py, pz));
+        // Outer paper shell
+        const shell = new THREE.Mesh(paperOuterGeom, paperMaterial);
+        shell.castShadow = true;
+        shell.receiveShadow = true;
+        shell.position.set(px, py, pz);
+
+        // Inner paper hole
+        const inner = new THREE.Mesh(paperInnerGeom, paperMaterial);
+        inner.castShadow = false;
+        inner.receiveShadow = false;
+        inner.position.set(px, py, pz);
+
+        // Cardboard tube outer wall
+        const coreOuter = new THREE.Mesh(coreOuterGeom, coreMaterial);
+        coreOuter.castShadow = false;
+        coreOuter.receiveShadow = false;
+        coreOuter.position.set(px, py, pz);
+
+        // Cardboard tube inner wall
+        const coreInner = new THREE.Mesh(coreInnerGeom, coreMaterial);
+        coreInner.castShadow = false;
+        coreInner.receiveShadow = false;
+        coreInner.position.set(px, py, pz);
+
+        packGroup.add(shell, inner, coreOuter, coreInner);
       }
     }
   }
 
   const total = p.rollsPerRow * p.rowsPerLayer * p.layers;
   totalRollsEl.textContent = total;
-  countLabel.textContent = `${total} rolls`;
+  countLabel.textContent   = `${total} rolls`;
 }
 
 // --------------------------------------
-// Camera defaults
-//---------------------------------------
+// Camera defaults (your values)
+// --------------------------------------
 
 function setDefaultCamera() {
   camera.position.set(115.72, 46.43, -81.27);
@@ -224,32 +248,32 @@ function resetCamera() {
 }
 
 // --------------------------------------
-// PNG Export
-//---------------------------------------
+// PNG Export (hide debug panel for clean image)
+// --------------------------------------
 
 function exportPNG() {
-  const prev = camDebugPanel.style.display || "";
+  const prevDisplay = camDebugPanel.style.display || "";
   camDebugPanel.style.display = "none";
 
   renderer.render(scene, camera);
-  const url = renderer.domElement.toDataURL("image/png");
+  const dataURL = renderer.domElement.toDataURL("image/png");
 
   const a = document.createElement("a");
-  a.href = url;
+  a.href = dataURL;
   a.download = "toilet-pack.png";
   a.click();
 
-  camDebugPanel.style.display = prev;
+  camDebugPanel.style.display = prevDisplay;
 }
 
 // --------------------------------------
-// Camera debug display
-//---------------------------------------
+// Camera debug panel update
+// --------------------------------------
 
 function updateCameraDebug() {
-  camXEl.textContent = camera.position.x.toFixed(2);
-  camYEl.textContent = camera.position.y.toFixed(2);
-  camZEl.textContent = camera.position.z.toFixed(2);
+  camXEl.textContent  = camera.position.x.toFixed(2);
+  camYEl.textContent  = camera.position.y.toFixed(2);
+  camZEl.textContent  = camera.position.z.toFixed(2);
 
   camTxEl.textContent = controls.target.x.toFixed(2);
   camTyEl.textContent = controls.target.y.toFixed(2);
@@ -257,12 +281,12 @@ function updateCameraDebug() {
 }
 
 // --------------------------------------
-// Init
-//---------------------------------------
+// Events & init
+// --------------------------------------
 
-generateBtn.onclick = generatePack;
-resetCameraBtn.onclick = resetCamera;
-exportPngBtn.onclick = exportPNG;
+generateBtn.onclick    = () => generatePack();
+resetCameraBtn.onclick = () => resetCamera();
+exportPngBtn.onclick   = () => exportPNG();
 
 generatePack();
 setDefaultCamera();
@@ -275,7 +299,7 @@ window.addEventListener("resize", () => {
 
 // --------------------------------------
 // Render loop
-//---------------------------------------
+// --------------------------------------
 
 function animate() {
   requestAnimationFrame(animate);
