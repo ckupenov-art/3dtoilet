@@ -155,36 +155,44 @@ const paperBumpTex = createPaperBumpTexture();
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  // Materials
-  const paperSideMat = new THREE.MeshStandardMaterial({
-    color: 0xeeeeee,
-    roughness: 0.55,
-    metalness: 0.0,
-    bumpMap: paperBumpTex,
-    bumpScale: 0.05
-  });
+//
+// IMPROVED MATERIALS — better separation, no unicolor look
+//
 
-  const paperEndMat = new THREE.MeshStandardMaterial({
-    color: 0xf7f7f7,
-    roughness: 0.85,
-    metalness: 0.0,
-    side: THREE.DoubleSide,
-    bumpMap: paperBumpTex,
-    bumpScale: 0.06
-  });
+// Side of roll → slightly cooler, smoother, subtle vertical falloff
+const paperSideMat = new THREE.MeshStandardMaterial({
+  color: 0xf2f2f2,        // slightly cooler white
+  roughness: 0.48,        // smoother than ends
+  metalness: 0.0,
+  bumpMap: paperBumpTex,
+  bumpScale: 0.025,       // lighter bump for side
+  envMapIntensity: 0.18
+});
 
-  const coreSideMat = new THREE.MeshStandardMaterial({
-    color: 0xdfd2b8, // cardboard
-    roughness: 0.85,
-    metalness: 0.0
-  });
+// Front face → warmer, more fibrous, more matte
+const paperEndMat = new THREE.MeshStandardMaterial({
+  color: 0xf8f7f3,        // warmer tone for front disc
+  roughness: 0.78,        // more matte than side
+  metalness: 0.0,
+  side: THREE.DoubleSide,
+  bumpMap: paperBumpTex,
+  bumpScale: 0.055,       // stronger bump on front surface
+  envMapIntensity: 0.12
+});
 
-  const holeMat = new THREE.MeshStandardMaterial({
-    color: 0xd0d0d0, // inner hollow
-    roughness: 0.9,
-    metalness: 0.0,
-    side: THREE.DoubleSide
-  });
+// Core cardboard → more distinct, warmer, stronger shading
+const coreSideMat = new THREE.MeshStandardMaterial({
+  color: 0xd7c3a1,
+  roughness: 0.88,
+  metalness: 0.0
+});
+
+const holeMat = new THREE.MeshStandardMaterial({
+  color: 0xd6d6d6,
+  roughness: 0.9,
+  metalness: 0.0,
+  side: THREE.DoubleSide
+});
 
   const coreEndMat = coreSideMat;
 
