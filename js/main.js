@@ -1,10 +1,12 @@
-// main.js – new clean realistic roll geometry, no seams, no textures, no circles
+// main.js – clean realistic rolls with visible inner core, no textures, no outlines
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "https://unpkg.com/three@0.165.0/examples/jsm/environments/RoomEnvironment.js";
 
-// DOM references
+// ------------------------------------------------
+// DOM
+// ------------------------------------------------
 const container       = document.getElementById("scene-container");
 const countLabel      = document.getElementById("count-label");
 
@@ -30,11 +32,10 @@ const camTzEl = document.getElementById("cam-tz");
 const camDebugPanel = document.getElementById("camera-debug");
 
 // ------------------------------------------------
-// Scene
+// Scene / Renderer
 // ------------------------------------------------
-
 const scene = new THREE.Scene();
-scene.background = null; // PNG stays transparent
+scene.background = null; // keep PNG transparent
 
 const camera = new THREE.PerspectiveCamera(
   45,
@@ -48,12 +49,12 @@ const renderer = new THREE.WebGLRenderer({
   alpha: true,
   preserveDrawingBuffer: true
 });
-
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000000, 0);
+renderer.setClearColor(0x000000, 0); // fully transparent
 
-renderer.domElement.style.backgroundColor = "#e7e9ee"; // soft UI grey
+// UI background color (does not affect PNG)
+renderer.domElement.style.backgroundColor = "#b8beca"; // medium cool grey for contrast
 
 container.appendChild(renderer.domElement);
 
@@ -62,29 +63,28 @@ controls.enableDamping = true;
 controls.enablePan = true;
 
 // ------------------------------------------------
-// Studio environment lighting
+// Lighting – soft studio look
 // ------------------------------------------------
-
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+scene.add(new THREE.AmbientLight(0xffffff, 0.55)); // global fill
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 0.35);
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.45);
 keyLight.position.set(6, 10, 14);
 scene.add(keyLight);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xdddddd, 0.22));
+const hemi = new THREE.HemisphereLight(0xffffff, 0xdddddd, 0.25);
+scene.add(hemi);
 
 // ------------------------------------------------
 const packGroup = new THREE.Group();
 scene.add(packGroup);
 
 // ------------------------------------------------
-// Parameter helpers
+// Helpers / parameters
 // ------------------------------------------------
-
-const MM  = 0.1; // 10mm = 1 unit
+const MM  = 0.1; // 10 mm = 1 world unit
 const EPS = 0.01;
 
 function getInt(el, fallback) {
@@ -107,35 +107,45 @@ function readParams() {
     coreDiameterMm: getFloat(coreDiameterEl, 45),
     rollHeightMm:   getFloat(rollHeightEl, 100),
 
-    rollGapMm: getFloat(rollGapEl, 1)
+    // default roll spacing: 7 mm (you asked for 1 → 7)
+    rollGapMm: getFloat(rollGapEl, 7)
   };
 }
 
 // ------------------------------------------------
-// BUILD REALISTIC 3D ROLL (NO TEXTURES)
+// REALISTIC 3D ROLL (geometry-only, no textures)
+// - clear inner core
+// - no overlapping geometry
+// - no dark outlines
 // ------------------------------------------------
-
-function buildRoll(R_outer, R_core, L) {
-
+function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  // Materials
-  const paperMat = new THREE.MeshStandardMaterial({
+  // ---- Materials ----
+  const paperSideMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.82,
+    roughness: 0.8,
     metalness: 0.0
   });
 
-  const endMat = new THREE.MeshStandardMaterial({
-    color: 0xf8f8f8,
-    roughness: 0.88,
-    metalness: 0.0
+  const paperEndMat = new THREE.MeshStandardMaterial({
+    color: 0xf7f7f7,
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.DoubleSide
   });
 
-  const coreMat = new THREE.MeshStandardMaterial({
-    color: 0xdfd2b8,
+  const coreSideMat = new THREE.MeshStandardMaterial({
+    color: 0xdfd2b8, // beige paperboard
     roughness: 0.85,
     metalness: 0.0
+  });
+
+  const coreEndMat = new THREE.MeshStandardMaterial({
+    color: 0xdfd2b8,
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.DoubleSide
   });
 
   const holeMat = new THREE.MeshStandardMaterial({
@@ -145,76 +155,95 @@ function buildRoll(R_outer, R_core, L) {
     side: THREE.DoubleSide
   });
 
-  // ------------------------------------------------
-  // Paper cylinder (side)
-  // ------------------------------------------------
+  // ---- Dimensions ----
+  const bevel     = 0.4 * MM;     // soft edge of paper
+  const coreThick = 1.2 * MM;     // core wall thickness
+
+  const R_coreInner = Math.max(0, R_coreOuter - coreThick);
+
+  // ---- Paper side cylinder ----
   const sideGeom = new THREE.CylinderGeometry(
     R_outer, R_outer, L,
     64, 1, true
   );
   sideGeom.rotateZ(Math.PI / 2);
 
-  group.add(new THREE.Mesh(sideGeom, paperMat));
+  const sideMesh = new THREE.Mesh(sideGeom, paperSideMat);
+  group.add(sideMesh);
 
-  // ------------------------------------------------
-  // Paper end caps (simple bevel geometry)
-  // ------------------------------------------------
-  const bevel = 0.4 * MM;
-  const endOuterR = R_outer - bevel;
-
-  const endGeom = new THREE.CylinderGeometry(
-    endOuterR, endOuterR, bevel * 2,
-    64, 1, false
+  // ---- Paper end faces (front/back) ----
+  const paperEndRingGeom = new THREE.RingGeometry(
+    R_coreOuter, R_outer, 64
   );
-  endGeom.rotateZ(Math.PI / 2);
 
-  const endFront = new THREE.Mesh(endGeom, endMat);
-  endFront.position.x = L / 2 + bevel;
+  const paperEndFront = new THREE.Mesh(paperEndRingGeom, paperEndMat);
+  paperEndFront.rotation.y = Math.PI / 2;
+  paperEndFront.position.x = L / 2;
 
-  const endBack = new THREE.Mesh(endGeom, endMat);
-  endBack.position.x = -L / 2 - bevel;
+  const paperEndBack = paperEndFront.clone();
+  paperEndBack.position.x = -L / 2;
+  paperEndBack.rotation.y = -Math.PI / 2;
 
-  group.add(endFront, endBack);
+  group.add(paperEndFront, paperEndBack);
 
-  // ------------------------------------------------
-  // Core tube (outer)
-  // ------------------------------------------------
-  const coreThickness = 1.2 * MM;
-
-  const coreOuterR = R_core;
-  const coreInnerR = Math.max(0, R_core - coreThickness);
-
-  const coreOuterGeom = new THREE.CylinderGeometry(
-    coreOuterR, coreOuterR,
-    L + bevel * 2,
+  // ---- Core side (outer tube) ----
+  const coreSideGeom = new THREE.CylinderGeometry(
+    R_coreOuter, R_coreOuter, L * 0.98,
     48, 1, true
   );
-  coreOuterGeom.rotateZ(Math.PI / 2);
+  coreSideGeom.rotateZ(Math.PI / 2);
+  const coreSideMesh = new THREE.Mesh(coreSideGeom, coreSideMat);
+  group.add(coreSideMesh);
 
-  group.add(new THREE.Mesh(coreOuterGeom, coreMat));
-
-  // ------------------------------------------------
-  // Core inner hole (actual geometry)
-  // ------------------------------------------------
+  // ---- Core inner wall (hole wall) using inner cylinder with flipped normals ----
   const coreInnerGeom = new THREE.CylinderGeometry(
-    coreInnerR, coreInnerR,
-    L + bevel * 2,
+    R_coreInner, R_coreInner, L * 0.98,
     48, 1, true
   );
   coreInnerGeom.rotateZ(Math.PI / 2);
+  coreInnerGeom.scale(-1, 1, 1); // flip normals for inside
 
-  group.add(new THREE.Mesh(coreInnerGeom, holeMat));
+  const coreInnerMesh = new THREE.Mesh(coreInnerGeom, holeMat);
+  group.add(coreInnerMesh);
+
+  // ---- Core end rings (front/back) ----
+  const coreEndRingGeom = new THREE.RingGeometry(
+    R_coreInner, R_coreOuter, 48
+  );
+
+  const coreEndFront = new THREE.Mesh(coreEndRingGeom, coreEndMat);
+  coreEndFront.rotation.y = Math.PI / 2;
+  coreEndFront.position.x = L / 2;
+
+  const coreEndBack = coreEndFront.clone();
+  coreEndBack.position.x = -L / 2;
+  coreEndBack.rotation.y = -Math.PI / 2;
+
+  group.add(coreEndFront, coreEndBack);
+
+  // ---- Hole face discs (front/back) ----
+  const holeDiscGeom = new THREE.CircleGeometry(R_coreInner, 32);
+
+  const holeFront = new THREE.Mesh(holeDiscGeom, holeMat);
+  holeFront.rotation.y = Math.PI / 2;
+  holeFront.position.x = L / 2 + 0.0001;
+
+  const holeBack = holeFront.clone();
+  holeBack.position.x = -L / 2 - 0.0001;
+  holeBack.rotation.y = -Math.PI / 2;
+
+  group.add(holeFront, holeBack);
 
   return group;
 }
 
 // ------------------------------------------------
-// Generation
+// Pack generation
 // ------------------------------------------------
-
 function clearPack() {
-  while (packGroup.children.length)
+  while (packGroup.children.length) {
     packGroup.remove(packGroup.children[0]);
+  }
 }
 
 function generatePack() {
@@ -260,7 +289,6 @@ function generatePack() {
 // ------------------------------------------------
 // Camera
 // ------------------------------------------------
-
 function setDefaultCamera() {
   camera.position.set(115.72, 46.43, -81.27);
   controls.target.set(1.40, -7.93, 7.26);
@@ -272,9 +300,8 @@ function resetCamera() {
 }
 
 // ------------------------------------------------
-// PNG Export
+// PNG Export (transparent)
 // ------------------------------------------------
-
 function exportPNG() {
   const prev = camDebugPanel.style.display;
   camDebugPanel.style.display = "none";
@@ -291,9 +318,8 @@ function exportPNG() {
 }
 
 // ------------------------------------------------
-// Camera debug
+// Camera debug panel
 // ------------------------------------------------
-
 function updateCameraDebug() {
   camXEl.textContent  = camera.position.x.toFixed(2);
   camYEl.textContent  = camera.position.y.toFixed(2);
@@ -301,17 +327,15 @@ function updateCameraDebug() {
 
   camTxEl.textContent = controls.target.x.toFixed(2);
   camTyEl.textContent = controls.target.y.toFixed(2);
-  camTzEl.textContent =
-    controls.target.z.toFixed(2);
+  camTzEl.textContent = controls.target.z.toFixed(2);
 }
 
 // ------------------------------------------------
-// Init
+// Init & animate
 // ------------------------------------------------
-
-generateBtn.onclick    = generatePack;
-resetCameraBtn.onclick = resetCamera;
-exportPngBtn.onclick   = exportPNG;
+generateBtn.onclick    = () => generatePack();
+resetCameraBtn.onclick = () => resetCamera();
+exportPngBtn.onclick   = () => exportPNG();
 
 generatePack();
 setDefaultCamera();
