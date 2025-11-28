@@ -1,4 +1,4 @@
-// main.js – improved shading, realistic curvature, empty core, beige background
+// main.js – clean white rolls, hollow core, beige bg, bevel + micro shading
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -54,7 +54,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
 
-// Clean beige UI background
+// Beige UI background (PNG stays transparent)
 renderer.domElement.style.backgroundColor = "#e8e4da";
 
 container.appendChild(renderer.domElement);
@@ -63,12 +63,12 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ------------------------------------------------
-// Lighting – improved clarity & soft realism
+// Lighting – product style
 // ------------------------------------------------
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.02).texture;
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.22)); // lower ambient = more contrast
+scene.add(new THREE.AmbientLight(0xffffff, 0.22));
 
 const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
 keyLight.position.set(40, 60, 40);
@@ -112,18 +112,55 @@ function readParams() {
 }
 
 // ------------------------------------------------
-// Roll Builder – better shading + true hollow core
+// Micro bump texture for paper (no visible pattern)
+// ------------------------------------------------
+function createPaperBumpTexture() {
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+
+  const img = ctx.createImageData(size, size);
+  const d = img.data;
+  const cx = size / 2;
+  const cy = size / 2;
+  const maxR = size / 2;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const r = Math.sqrt(dx*dx + dy*dy) / maxR; // 0 center → 1 edge
+      const shade = 128 + (r * 30); // edges slightly higher
+      const i = (y * size + x) * 4;
+      d[i] = d[i+1] = d[i+2] = shade;
+      d[i+3] = 255;
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+const paperBumpTex = createPaperBumpTexture();
+
+// ------------------------------------------------
+// Roll Builder – bevel + micro shading + hollow core
 // ------------------------------------------------
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
   // Materials
   const paperSideMat = new THREE.MeshStandardMaterial({
-    color: 0xeeeeee,         // slightly dimmer white
-    roughness: 0.7,
+    color: 0xeeeeee,
+    roughness: 0.75,
     metalness: 0.0,
+    bumpMap: paperBumpTex,
+    bumpScale: 0.015,
     emissive: new THREE.Color(0x000000),
-    emissiveIntensity: -0.08 // subtle curvature shading
+    emissiveIntensity: -0.05
   });
 
   const paperEndMat = new THREE.MeshStandardMaterial({
@@ -131,11 +168,13 @@ function buildRoll(R_outer, R_coreOuter, L) {
     roughness: 0.9,
     metalness: 0.0,
     side: THREE.DoubleSide,
-    emissiveIntensity: -0.1
+    bumpMap: paperBumpTex,
+    bumpScale: 0.02,
+    emissiveIntensity: -0.08
   });
 
   const coreSideMat = new THREE.MeshStandardMaterial({
-    color: 0xdfd2b8, // clean beige cardboard
+    color: 0xdfd2b8,
     roughness: 0.85,
     metalness: 0.0
   });
@@ -149,23 +188,42 @@ function buildRoll(R_outer, R_coreOuter, L) {
 
   const coreEndMat = coreSideMat;
 
-  // Core dimensions
+  // Dimensions
   const coreThickness = 1.2 * MM;
   const R_coreInner = Math.max(0, R_coreOuter - coreThickness);
+  const bevelDepth = 0.4 * MM;
 
-  // --------------------------------------------
-  // Paper SIDE
-  // --------------------------------------------
+  // ---------------------------
+  // Paper SIDE (slightly shorter)
+  // ---------------------------
   const sideGeom = new THREE.CylinderGeometry(
-    R_outer, R_outer, L,
+    R_outer, R_outer, L - bevelDepth * 2,
     64, 1, true
   );
   sideGeom.rotateZ(Math.PI / 2);
-  group.add(new THREE.Mesh(sideGeom, paperSideMat));
+  const sideMesh = new THREE.Mesh(sideGeom, paperSideMat);
+  group.add(sideMesh);
 
-  // --------------------------------------------
+  // ---------------------------
+  // Bevel rings at ends (thin paper wrap)
+  // ---------------------------
+  const bevelGeom = new THREE.CylinderGeometry(
+    R_outer, R_outer, bevelDepth,
+    48, 1, true
+  );
+  bevelGeom.rotateZ(Math.PI / 2);
+
+  const bevelFront = new THREE.Mesh(bevelGeom, paperSideMat);
+  bevelFront.position.x = L/2 - bevelDepth/2;
+  group.add(bevelFront);
+
+  const bevelBack = bevelFront.clone();
+  bevelBack.position.x = -L/2 + bevelDepth/2;
+  group.add(bevelBack);
+
+  // ---------------------------
   // Paper END rings
-  // --------------------------------------------
+  // ---------------------------
   const endRingGeom = new THREE.RingGeometry(
     R_coreOuter, R_outer, 64
   );
@@ -180,9 +238,9 @@ function buildRoll(R_outer, R_coreOuter, L) {
   endBack.position.x = -L / 2;
   group.add(endBack);
 
-  // --------------------------------------------
+  // ---------------------------
   // Core outer wall
-  // --------------------------------------------
+  // ---------------------------
   const coreOuterGeom = new THREE.CylinderGeometry(
     R_coreOuter, R_coreOuter, L * 0.98,
     48, 1, true
@@ -190,9 +248,9 @@ function buildRoll(R_outer, R_coreOuter, L) {
   coreOuterGeom.rotateZ(Math.PI / 2);
   group.add(new THREE.Mesh(coreOuterGeom, coreSideMat));
 
-  // --------------------------------------------
+  // ---------------------------
   // Core inner wall (hollow)
-  // --------------------------------------------
+  // ---------------------------
   const coreInnerGeom = new THREE.CylinderGeometry(
     R_coreInner, R_coreInner, L * 0.98,
     48, 1, true
@@ -201,9 +259,9 @@ function buildRoll(R_outer, R_coreOuter, L) {
   coreInnerGeom.scale(-1, 1, 1); // flip normals inward
   group.add(new THREE.Mesh(coreInnerGeom, holeMat));
 
-  // --------------------------------------------
+  // ---------------------------
   // Core end rings (open center)
-  // --------------------------------------------
+  // ---------------------------
   const coreEndRingGeom = new THREE.RingGeometry(
     R_coreInner, R_coreOuter, 48
   );
