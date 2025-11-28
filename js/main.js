@@ -1,4 +1,4 @@
-// main.js – clean white rolls + real hollow core + beige background + product lighting
+// main.js – improved shading, realistic curvature, empty core, beige background
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -63,30 +63,27 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ------------------------------------------------
-// Lighting – clean product render
+// Lighting – improved clarity & soft realism
 // ------------------------------------------------
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.02).texture;
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.32));
+scene.add(new THREE.AmbientLight(0xffffff, 0.22)); // lower ambient = more contrast
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
 keyLight.position.set(40, 60, 40);
 scene.add(keyLight);
 
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.18);
 fillLight.position.set(-40, 20, -40);
 scene.add(fillLight);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xdddddd, 0.2));
+scene.add(new THREE.HemisphereLight(0xffffff, 0xdddddd, 0.18));
 
 // ------------------------------------------------
 const packGroup = new THREE.Group();
 scene.add(packGroup);
 
-// ------------------------------------------------
-// Params
-// ------------------------------------------------
 const MM  = 0.1; // 10 mm per unit
 const EPS = 0.01;
 
@@ -110,28 +107,31 @@ function readParams() {
     coreDiameterMm: getFloat(coreDiameterEl, 45),
     rollHeightMm:   getFloat(rollHeightEl, 100),
 
-    rollGapMm: (getFloat(rollGapEl, 7) || 7)   // always default 7
+    rollGapMm: (getFloat(rollGapEl, 7) || 7)
   };
 }
 
 // ------------------------------------------------
-// Roll Builder – CLEAN WHITE ROLL + REAL HOLLOW CORE
+// Roll Builder – better shading + true hollow core
 // ------------------------------------------------
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
   // Materials
   const paperSideMat = new THREE.MeshStandardMaterial({
-    color: 0xf2f2f2,
+    color: 0xeeeeee,         // slightly dimmer white
     roughness: 0.7,
-    metalness: 0.0
+    metalness: 0.0,
+    emissive: new THREE.Color(0x000000),
+    emissiveIntensity: -0.08 // subtle curvature shading
   });
 
   const paperEndMat = new THREE.MeshStandardMaterial({
-    color: 0xf7f7f7,
+    color: 0xf4f4f4,
     roughness: 0.9,
     metalness: 0.0,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    emissiveIntensity: -0.1
   });
 
   const coreSideMat = new THREE.MeshStandardMaterial({
@@ -188,7 +188,6 @@ function buildRoll(R_outer, R_coreOuter, L) {
     48, 1, true
   );
   coreOuterGeom.rotateZ(Math.PI / 2);
-
   group.add(new THREE.Mesh(coreOuterGeom, coreSideMat));
 
   // --------------------------------------------
@@ -199,12 +198,11 @@ function buildRoll(R_outer, R_coreOuter, L) {
     48, 1, true
   );
   coreInnerGeom.rotateZ(Math.PI / 2);
-  coreInnerGeom.scale(-1, 1, 1); // flip normals
-
+  coreInnerGeom.scale(-1, 1, 1); // flip normals inward
   group.add(new THREE.Mesh(coreInnerGeom, holeMat));
 
   // --------------------------------------------
-  // Core end rings (open hole)
+  // Core end rings (open center)
   // --------------------------------------------
   const coreEndRingGeom = new THREE.RingGeometry(
     R_coreInner, R_coreOuter, 48
@@ -219,12 +217,6 @@ function buildRoll(R_outer, R_coreOuter, L) {
   coreBack.rotation.y = -Math.PI / 2;
   coreBack.position.x = -L / 2;
   group.add(coreBack);
-
-  // --------------------------------------------
-  // OPEN hole (no disc!)
-  // --------------------------------------------
-
-  // No hole mesh—fully open
 
   return group;
 }
