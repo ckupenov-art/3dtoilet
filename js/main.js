@@ -1,3 +1,4 @@
+
 // main.js – clean subtle style (no "eyes"), transparent background
 
 import * as THREE from "three";
@@ -20,7 +21,7 @@ const generateBtn     = document.getElementById("generateBtn");
 const resetCameraBtn  = document.getElementById("resetCameraBtn");
 const exportPngBtn    = document.getElementById("exportPngBtn");
 
-// Camera debug UI
+// Debug
 const camXEl  = document.getElementById("cam-x");
 const camYEl  = document.getElementById("cam-y");
 const camZEl  = document.getElementById("cam-z");
@@ -29,12 +30,12 @@ const camTyEl = document.getElementById("cam-ty");
 const camTzEl = document.getElementById("cam-tz");
 const camDebugPanel = document.getElementById("camera-debug");
 
-// --------------------------------------
-// Scene Setup
-// --------------------------------------
+// -----------------------------
+// Scene
+// -----------------------------
 
 const scene = new THREE.Scene();
-scene.background = null; // transparent for PNG export
+scene.background = null; // transparent render
 
 const camera = new THREE.PerspectiveCamera(
   45,
@@ -43,43 +44,59 @@ const camera = new THREE.PerspectiveCamera(
   5000
 );
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  alpha: true,
+  preserveDrawingBuffer: true
+});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
-renderer.shadowMap.enabled = true;
+
 container.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enablePan = true;
 
-// Soft lighting
-scene.add(new THREE.AmbientLight(0xffffff, 0.82));
+// -----------------------------
+// Soft Lighting (no “eyes”)
+// -----------------------------
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-dirLight.position.set(20, 30, 20);
-dirLight.castShadow = true;
-scene.add(dirLight);
+// Global soft fill light
+scene.add(new THREE.AmbientLight(0xffffff, 0.68));
 
+// Key light (soft)
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.35);
+keyLight.position.set(6, 10, 14);
+keyLight.castShadow = true;
+keyLight.shadow.radius = 8;
+keyLight.shadow.mapSize.set(1024, 1024);
+scene.add(keyLight);
+
+// Faux AO for roll ends
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0xdddddd, 0.22);
+scene.add(hemiLight);
+
+// -----------------------------
 const packGroup = new THREE.Group();
 scene.add(packGroup);
 
-// --------------------------------------
+// -----------------------------
 // Helpers
-// --------------------------------------
+// -----------------------------
 
-const MM  = 0.1;   // 10 mm = 1 world unit
+const MM  = 0.1;  // 10mm = 1 unit
 const EPS = 0.01;
 
-function getInt(el, fallback) {
+function getInt(el, fb) {
   const v = parseInt(el.value, 10);
-  return Number.isFinite(v) && v > 0 ? v : fallback;
+  return Number.isFinite(v) && v > 0 ? v : fb;
 }
 
-function getFloat(el, fallback) {
+function getFloat(el, fb) {
   const v = parseFloat(el.value);
-  return Number.isFinite(v) && v >= 0 ? v : fallback;
+  return Number.isFinite(v) && v >= 0 ? v : fb;
 }
 
 function readParams() {
@@ -92,118 +109,129 @@ function readParams() {
     coreDiameterMm: getFloat(coreDiameterEl, 45),
     rollHeightMm:   getFloat(rollHeightEl, 100),
 
-    rollGapMm:      getFloat(rollGapEl, 1.0)
+    rollGapMm:      getFloat(rollGapEl, 1)
   };
 }
 
-// --------------------------------------
-// Subtle paper texture for the side
-// --------------------------------------
+// --------------------------------------------------
+// Paper side noise (very soft: 2–4 brightness range)
+// --------------------------------------------------
 
 function createPaperSideTexture() {
   const size = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
 
   const img = ctx.createImageData(size, size);
   const d = img.data;
 
   for (let i = 0; i < d.length; i += 4) {
-    const val = 235 + Math.random() * 8; // very light noise
-    d[i] = d[i + 1] = d[i + 2] = val;
-    d[i + 3] = 255;
+    const n = 244 + Math.random() * 8;
+    d[i] = d[i+1] = d[i+2] = n;
+    d[i+3] = 255;
   }
 
   ctx.putImageData(img, 0, 0);
 
-  const tex = new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(4, 1);
   return tex;
 }
-
 const paperSideTexture = createPaperSideTexture();
 
-// --------------------------------------
-// End texture (very soft, non-eye)
-// --------------------------------------
+// --------------------------------------------------
+// Roll Ends — clean, subtle, no “eye”
+// --------------------------------------------------
 
 let endTexture = null;
 
-function createRollEndTexture(outerRadius, coreRadius) {
+function createRollEndTexture(R_outer, R_core) {
   if (endTexture) endTexture.dispose();
 
   const size = 256;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d");
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
 
   const cx = size / 2;
   const cy = size / 2;
 
-  // Map radii to pixels
   const outerPix = size * 0.45;
-  const corePix  = outerPix * (coreRadius / outerRadius);
+  const corePix  = outerPix * (R_core / R_outer);
   const holePix  = corePix * 0.55;
 
-  // Paper disc
-  ctx.fillStyle = "#f3f3f3"; // light paper
+  // Base paper
+  ctx.fillStyle = "#f5f5f5";
   ctx.beginPath();
   ctx.arc(cx, cy, outerPix, 0, Math.PI * 2);
   ctx.fill();
 
-  // Single very soft paper ring – just a little contour
-  ctx.strokeStyle = "rgba(215,215,215,0.6)";
+  // Very soft radial AO
+  let g = ctx.createRadialGradient(cx, cy, outerPix * 0.3, cx, cy, outerPix);
+  g.addColorStop(0, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(0,0,0,0.035)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerPix, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Light compression ring
+  ctx.strokeStyle = "rgba(200,200,200,0.28)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.arc(cx, cy, (outerPix + corePix) * 0.5, 0, Math.PI * 2);
+  ctx.arc(cx, cy, (outerPix + corePix) * 0.52, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Cardboard ring – gentle beige, close to paper
-  ctx.fillStyle = "#d4b894";
+  // Core (beige paperboard)
+  ctx.fillStyle = "#e8dbc9";
   ctx.beginPath();
   ctx.arc(cx, cy, corePix, 0, Math.PI * 2);
   ctx.fill();
 
-  // Hole – light gray, small
-  ctx.fillStyle = "#cccccc";
+  // Darken inner core just slightly
+  g = ctx.createRadialGradient(cx, cy, holePix, cx, cy, corePix);
+  g.addColorStop(0, "rgba(0,0,0,0.035)");
+  g.addColorStop(1, "rgba(0,0,0,0.0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, corePix, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hole
+  ctx.fillStyle = "#d6d6d6";
   ctx.beginPath();
   ctx.arc(cx, cy, holePix, 0, Math.PI * 2);
   ctx.fill();
 
-  // Very soft outer outline – slightly thicker but pale
-  ctx.strokeStyle = "rgba(210,210,210,0.3)";
-  ctx.lineWidth = 1.0;
-  ctx.beginPath();
-  ctx.arc(cx, cy, outerPix, 0, Math.PI * 2);
-  ctx.stroke();
-
-  const tex = new THREE.CanvasTexture(canvas);
+  const tex = new THREE.CanvasTexture(c);
   tex.anisotropy = 4;
   tex.needsUpdate = true;
   endTexture = tex;
+
   return tex;
 }
 
-// --------------------------------------
-// Geometries & materials
-// --------------------------------------
+// --------------------------------------------------
+// Materials
+// --------------------------------------------------
 
 let paperSideGeom = null;
 let seamGeom      = null;
 let endGeom       = null;
 
 const paperSideMaterial = new THREE.MeshStandardMaterial({
-  color: 0xf7f7f7,
-  roughness: 0.6,
+  color: 0xffffff,
+  roughness: 0.78,
   metalness: 0.0,
-  map: paperSideTexture
+  map: paperSideTexture,
+  mapIntensity: 0.3
 });
 
 const seamMaterial = new THREE.MeshStandardMaterial({
-  color: 0xe0e0e0,
-  roughness: 0.7,
+  color: 0xe5e5e5,
+  roughness: 0.8,
   metalness: 0.0
 });
 
@@ -211,6 +239,10 @@ const endMaterial = new THREE.MeshBasicMaterial({
   map: null,
   transparent: false
 });
+
+// --------------------------------------------------
+// Geometries
+// --------------------------------------------------
 
 function updateGeometries(p) {
   if (paperSideGeom) paperSideGeom.dispose();
@@ -221,38 +253,36 @@ function updateGeometries(p) {
   const R_core  = (p.coreDiameterMm / 2) * MM;
   const L       = p.rollHeightMm * MM;
 
-  // Side cylinder (open ends), oriented along X
+  // Side tube
   paperSideGeom = new THREE.CylinderGeometry(R_outer, R_outer, L, 48, 1, true);
   paperSideGeom.rotateZ(Math.PI / 2);
 
-  // Seam ring
+  // Slightly smoother seam tube
   const seamThickness = 0.4 * MM;
   seamGeom = new THREE.CylinderGeometry(
     R_outer * 1.01,
     R_outer * 1.01,
     seamThickness,
-    32,
-    1,
-    true
+    48, 1, true
   );
   seamGeom.rotateZ(Math.PI / 2);
 
-  // End disc (flat) facing X
+  // Flat end discs
   endGeom = new THREE.CircleGeometry(R_outer, 64);
   endGeom.rotateY(Math.PI / 2);
 
-  // Refresh end texture
-  const endTex = createRollEndTexture(R_outer, R_core);
-  endMaterial.map = endTex;
+  const texEnd = createRollEndTexture(R_outer, R_core);
+  endMaterial.map = texEnd;
   endMaterial.needsUpdate = true;
 }
 
-// --------------------------------------
+// --------------------------------------------------
 // Pack generation
-// --------------------------------------
+// --------------------------------------------------
 
 function clearPack() {
-  while (packGroup.children.length) packGroup.remove(packGroup.children[0]);
+  while (packGroup.children.length)
+    packGroup.remove(packGroup.children[0]);
 }
 
 function generatePack() {
@@ -281,26 +311,21 @@ function generatePack() {
         const py = baseY   + layer * spacingY;
         const pz = offsetZ + row * spacingZ;
 
-        // Side paper tube
         const side = new THREE.Mesh(paperSideGeom, paperSideMaterial);
-        side.castShadow = true;
-        side.receiveShadow = true;
         side.position.set(px, py, pz);
 
-        // Seams
-        const seamOffset = (L / 2) - (1.0 * MM);
+        const seamOffset = (L / 2) - (1 * MM);
         const seamFront = new THREE.Mesh(seamGeom, seamMaterial);
         const seamBack  = new THREE.Mesh(seamGeom, seamMaterial);
         seamFront.position.set(px + seamOffset, py, pz);
         seamBack.position.set(px - seamOffset, py, pz);
 
-        // Ends (very soft)
         const endFront = new THREE.Mesh(endGeom, endMaterial);
         endFront.position.set(px + L / 2 + 0.0001, py, pz);
 
         const endBack = new THREE.Mesh(endGeom, endMaterial);
         endBack.position.set(px - L / 2 - 0.0001, py, pz);
-        endBack.rotation.y += Math.PI;
+        endBack.rotation.y = Math.PI;
 
         packGroup.add(side, seamFront, seamBack, endFront, endBack);
       }
@@ -312,9 +337,9 @@ function generatePack() {
   countLabel.textContent   = `${total} rolls`;
 }
 
-// --------------------------------------
+// --------------------------------------------------
 // Camera
-// --------------------------------------
+// --------------------------------------------------
 
 function setDefaultCamera() {
   camera.position.set(115.72, 46.43, -81.27);
@@ -326,9 +351,9 @@ function resetCamera() {
   setDefaultCamera();
 }
 
-// --------------------------------------
-// PNG Export (transparent background)
-// --------------------------------------
+// --------------------------------------------------
+// Export PNG
+// --------------------------------------------------
 
 function exportPNG() {
   const prev = camDebugPanel.style.display;
@@ -345,27 +370,27 @@ function exportPNG() {
   camDebugPanel.style.display = prev;
 }
 
-// --------------------------------------
-// Camera debug
-// --------------------------------------
+// --------------------------------------------------
+// Debug update
+// --------------------------------------------------
 
 function updateCameraDebug() {
-  camXEl.textContent  = camera.position.x.toFixed(2);
-  camYEl.textContent  = camera.position.y.toFixed(2);
-  camZEl.textContent  = camera.position.z.toFixed(2);
+  camXEl.textContent = camera.position.x.toFixed(2);
+  camYEl.textContent = camera.position.y.toFixed(2);
+  camZEl.textContent = camera.position.z.toFixed(2);
 
   camTxEl.textContent = controls.target.x.toFixed(2);
   camTyEl.textContent = controls.target.y.toFixed(2);
   camTzEl.textContent = controls.target.z.toFixed(2);
 }
 
-// --------------------------------------
+// --------------------------------------------------
 // Init
-// --------------------------------------
+// --------------------------------------------------
 
-generateBtn.onclick    = () => generatePack();
-resetCameraBtn.onclick = () => resetCamera();
-exportPngBtn.onclick   = () => exportPNG();
+generateBtn.onclick    = generatePack;
+resetCameraBtn.onclick = resetCamera;
+exportPngBtn.onclick   = exportPNG;
 
 generatePack();
 setDefaultCamera();
@@ -382,5 +407,4 @@ function animate() {
   updateCameraDebug();
   renderer.render(scene, camera);
 }
-
 animate();
