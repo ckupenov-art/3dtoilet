@@ -1,7 +1,4 @@
-// ===============================
-// main_final.js — FINAL VERSION
-// White/Purple Paper + Brown Core + Lit Cavity
-// ===============================
+// main_final.js – updated IDs: rollsPerChannelInput, rollsPerLaneInput, rollsPerLayerInput
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -12,9 +9,12 @@ import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/cont
 const container       = document.getElementById("scene-container");
 const countLabel      = document.getElementById("count-label");
 
-const rollsPerRowEl   = document.getElementById("rollsPerRowInput");
-const rowsPerLayerEl  = document.getElementById("rowsPerLayerInput");
-const layersEl        = document.getElementById("layersInput");
+// UPDATED IDS -------
+const rollsPerChannelEl = document.getElementById("rollsPerChannelInput");
+const rollsPerLaneEl    = document.getElementById("rollsPerLaneInput");
+const rollsPerLayerEl   = document.getElementById("rollsPerLayerInput");
+// -------------------
+
 const rollDiameterEl  = document.getElementById("rollDiameterInput");
 const coreDiameterEl  = document.getElementById("coreDiameterInput");
 const rollHeightEl    = document.getElementById("rollHeightInput");
@@ -52,38 +52,34 @@ const renderer = new THREE.WebGLRenderer({
   preserveDrawingBuffer: true
 });
 
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;
-renderer.toneMappingExposure = 1.0;
-
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
-renderer.domElement.style.backgroundColor = "#faf6eb";
+renderer.domElement.style.backgroundColor = "#e8e4da";
 container.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ------------------------------------------------
-// Studio Lighting — Strong Enough for White Paper
+// Lighting
 // ------------------------------------------------
 scene.add(new THREE.AmbientLight(0xffffff, 0.05));
 
-const key = new THREE.DirectionalLight(0xffffff, 2.2);
-key.position.set(90, 120, 70);
-scene.add(key);
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+keyLight.position.set(90, 120, 70);
+scene.add(keyLight);
 
-const fill = new THREE.DirectionalLight(0xffffff, 1.1);
-fill.position.set(-120, 60, -50);
-scene.add(fill);
+const fillLight = new THREE.DirectionalLight(0xffffff, 1.1);
+fillLight.position.set(-120, 60, -50);
+scene.add(fillLight);
 
-const rim = new THREE.DirectionalLight(0xffffff, 0.9);
-rim.position.set(0, 160, -120);
-scene.add(rim);
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.9);
+rimLight.position.set(0, 160, -120);
+scene.add(rimLight);
 
 // ------------------------------------------------
-// Constants
+// CONSTANTS
 // ------------------------------------------------
 const MM  = 0.1;
 const EPS = 0.01;
@@ -106,9 +102,9 @@ function getFloat(el, fallback) {
 
 function readParams() {
   return {
-    rollsPerRow:  getInt(rollsPerRowEl, 4),
-    rowsPerLayer: getInt(rowsPerLayerEl, 3),
-    layers:       getInt(layersEl, 2),
+    rollsPerChannel: getInt(rollsPerChannelEl, 4), // WAS rollsPerRow
+    rollsPerLane:    getInt(rollsPerLaneEl, 3),    // WAS rowsPerLayer
+    rollsPerLayer:   getInt(rollsPerLayerEl, 2),   // WAS layers
 
     rollDiameterMm: getFloat(rollDiameterEl, 120),
     coreDiameterMm: getFloat(coreDiameterEl, 45),
@@ -119,7 +115,7 @@ function readParams() {
 }
 
 // ------------------------------------------------
-// Paper Bump Texture
+// Micro bump texture
 // ------------------------------------------------
 function createPaperBumpTexture() {
   const size = 64;
@@ -130,29 +126,31 @@ function createPaperBumpTexture() {
   const img = ctx.createImageData(size, size);
   const d = img.data;
 
-  for (let i = 0; i < size * size; i++) {
-    const shade = 215 + Math.random() * 25;
-    const idx = i * 4;
-    d[idx] = d[idx+1] = d[idx+2] = shade;
-    d[idx+3] = 255;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const base = 125 + Math.random() * 20;
+      const gradient = (y / size) * 25;
+      const shade = base + gradient;
+      d[i] = d[i+1] = d[i+2] = shade;
+      d[i+3] = 255;
+    }
   }
 
   ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = 4;
   return tex;
 }
 
 const paperBumpTex = createPaperBumpTexture();
 
 // ------------------------------------------------
-// Roll Builder
+// Roll builder
 // ------------------------------------------------
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  // PAPER SIDE (White + Light Purple Tint)
   const paperSideMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.96, 0.94, 1.0),
     roughness: 0.55,
@@ -163,7 +161,6 @@ function buildRoll(R_outer, R_coreOuter, L) {
     emissiveIntensity: 0.45
   });
 
-  // PAPER ENDS (Slightly Brighter)
   const paperEndMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.97, 0.95, 1.0),
     roughness: 0.65,
@@ -175,32 +172,25 @@ function buildRoll(R_outer, R_coreOuter, L) {
     emissiveIntensity: 0.45
   });
 
-  // CORE OUTER (Brown Cardboard)
   const coreSideMat = new THREE.MeshStandardMaterial({
     color: 0xb8925d,
     roughness: 0.78,
-    metalness: 0.0
+    metalness: 0.0,
   });
 
-  // CORE INNER (Lit Cavity Fix — NO MORE BLACK HOLE)
   const coreInnerMat = new THREE.MeshStandardMaterial({
-    color: 0x7a7a7a,            // medium warm gray
+    color: 0x7a7a7a,
     roughness: 0.85,
     metalness: 0.0,
-    side: THREE.BackSide,       // correct orientation
-
-    // key fix: simulates bounced light inside tube
+    side: THREE.BackSide,
     emissive: new THREE.Color(0.28, 0.22, 0.15),
     emissiveIntensity: 0.55
   });
 
-  const coreEndMat = coreSideMat;
-
-  const coreThickness = 1.2 * MM;
-  const R_coreInner = Math.max(0, R_coreOuter - coreThickness);
+  const R_coreInner = Math.max(0, R_coreOuter - 1.2 * MM);
   const bevelDepth = 0.9 * MM;
 
-  // SIDE PAPER CYLINDER
+  // SIDE
   const sideGeom = new THREE.CylinderGeometry(
     R_outer, R_outer,
     L - bevelDepth * 2,
@@ -218,27 +208,27 @@ function buildRoll(R_outer, R_coreOuter, L) {
   bevelGeom.rotateZ(Math.PI / 2);
 
   const bevelFront = new THREE.Mesh(bevelGeom, paperSideMat);
-  bevelFront.position.x = L / 2 - bevelDepth / 2;
+  bevelFront.position.x = L/2 - bevelDepth/2;
   group.add(bevelFront);
 
   const bevelBack = bevelFront.clone();
-  bevelBack.position.x = -L / 2 + bevelDepth / 2;
+  bevelBack.position.x = -L/2 + bevelDepth/2;
   group.add(bevelBack);
 
   // PAPER ENDS
   const endRingGeom = new THREE.RingGeometry(R_coreOuter, R_outer, 64);
 
   const endFront = new THREE.Mesh(endRingGeom, paperEndMat);
-  endFront.position.x = L / 2;
+  endFront.position.x = L/2;
   endFront.rotation.y = Math.PI / 2;
   group.add(endFront);
 
   const endBack = endFront.clone();
-  endBack.position.x = -L / 2;
+  endBack.position.x = -L/2;
   endBack.rotation.y = -Math.PI / 2;
   group.add(endBack);
 
-  // CORE OUTER RING
+  // CORE OUTER
   const coreOuterGeom = new THREE.CylinderGeometry(
     R_coreOuter, R_coreOuter,
     L * 0.97,
@@ -247,7 +237,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
   coreOuterGeom.rotateZ(Math.PI / 2);
   group.add(new THREE.Mesh(coreOuterGeom, coreSideMat));
 
-  // CORE INNER WALL (BackSide + emissive)
+  // CORE INNER
   const coreInnerGeom = new THREE.CylinderGeometry(
     R_coreInner, R_coreInner,
     L * 0.97,
@@ -259,13 +249,13 @@ function buildRoll(R_outer, R_coreOuter, L) {
   // CORE END RINGS
   const coreEndRingGeom = new THREE.RingGeometry(R_coreInner, R_coreOuter, 48);
 
-  const coreFront = new THREE.Mesh(coreEndRingGeom, coreEndMat);
-  coreFront.position.x = L / 2;
+  const coreFront = new THREE.Mesh(coreEndRingGeom, coreSideMat);
+  coreFront.position.x = L/2;
   coreFront.rotation.y = Math.PI / 2;
   group.add(coreFront);
 
   const coreBack = coreFront.clone();
-  coreBack.position.x = -L / 2;
+  coreBack.position.x = -L/2;
   coreBack.rotation.y = -Math.PI / 2;
   group.add(coreBack);
 
@@ -273,7 +263,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
 }
 
 // ------------------------------------------------
-// Pack Generation
+// Pack generation
 // ------------------------------------------------
 function clearPack() {
   while (packGroup.children.length)
@@ -294,19 +284,20 @@ function generatePack() {
   const spacingY = D + EPS;
   const spacingZ = D + EPS;
 
-  const offsetX = -((p.rollsPerRow  - 1) * spacingX) / 2;
-  const offsetZ = -((p.rowsPerLayer - 1) * spacingZ) / 2;
-  const baseY   = -((p.layers       - 1) * spacingY) / 2;
+  // UPDATED NAMES
+  const offsetX = -((p.rollsPerChannel - 1) * spacingX) / 2;
+  const offsetZ = -((p.rollsPerLane    - 1) * spacingZ) / 2;
+  const baseY   = -((p.rollsPerLayer   - 1) * spacingY) / 2;
 
   clearPack();
 
-  for (let layer = 0; layer < p.layers; layer++) {
-    for (let row = 0; row < p.rowsPerLayer; row++) {
-      for (let col = 0; col < p.rollsPerRow; col++) {
+  for (let layer = 0; layer < p.rollsPerLayer; layer++) {
+    for (let lane = 0; lane < p.rollsPerLane; lane++) {
+      for (let channel = 0; channel < p.rollsPerChannel; channel++) {
 
-        const x = offsetX + col * spacingX;
+        const x = offsetX + channel * spacingX;
         const y = baseY   + layer * spacingY;
-        const z = offsetZ + row * spacingZ;
+        const z = offsetZ + lane * spacingZ;
 
         const roll = buildRoll(R_outer, R_core, L);
         roll.position.set(x, y, z);
@@ -315,13 +306,13 @@ function generatePack() {
     }
   }
 
-  const total = p.rollsPerRow * p.rowsPerLayer * p.layers;
+  const total = p.rollsPerChannel * p.rollsPerLane * p.rollsPerLayer;
   totalRollsEl.textContent = total;
   countLabel.textContent   = `${total} rolls`;
 }
 
 // ------------------------------------------------
-// Camera
+// Camera helper
 // ------------------------------------------------
 function setDefaultCamera() {
   camera.position.set(115.72, 46.43, -81.27);
@@ -337,20 +328,10 @@ function resetCamera() {
 // Export PNG
 // ------------------------------------------------
 function exportPNG() {
-  const prevDebug = camDebugPanel.style.display;
+  const prev = camDebugPanel.style.display;
   camDebugPanel.style.display = "none";
 
-  const scale = 3;
-  const w = container.clientWidth * scale;
-  const h = container.clientHeight * scale;
-
-  const prevSize = renderer.getSize(new THREE.Vector2());
-  const prevPixelRatio = renderer.getPixelRatio();
-
-  renderer.setSize(w, h);
-  renderer.setPixelRatio(1);
   renderer.render(scene, camera);
-
   const url = renderer.domElement.toDataURL("image/png");
 
   const a = document.createElement("a");
@@ -358,13 +339,11 @@ function exportPNG() {
   a.download = "toilet-pack.png";
   a.click();
 
-  renderer.setSize(prevSize.x, prevSize.y);
-  renderer.setPixelRatio(prevPixelRatio);
-  camDebugPanel.style.display = prevDebug;
+  camDebugPanel.style.display = prev;
 }
 
 // ------------------------------------------------
-// Camera Debug
+// Camera debug
 // ------------------------------------------------
 function updateCameraDebug() {
   camXEl.textContent  = camera.position.x.toFixed(2);
@@ -393,7 +372,7 @@ window.addEventListener("resize", () => {
 });
 
 // ------------------------------------------------
-// Animation Loop
+// Loop
 // ------------------------------------------------
 function animate() {
   requestAnimationFrame(animate);
