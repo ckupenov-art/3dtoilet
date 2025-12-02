@@ -1,7 +1,12 @@
-// main_final.js – stable working version
+// ===============================
+// main_final.js – enhanced version
+// ===============================
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
+import { EffectComposer } from "https://unpkg.com/three@0.165.0/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "https://unpkg.com/three@0.165.0/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "https://unpkg.com/three@0.165.0/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 // ------------------------------------------------
 // DOM
@@ -34,7 +39,31 @@ const camDebugPanel = document.getElementById("camera-debug");
 // Scene + Renderer
 // ------------------------------------------------
 const scene = new THREE.Scene();
-scene.background = null;
+
+// --- Background Gradient (Large shader plane behind objects)
+const gradGeo = new THREE.PlaneGeometry(5000, 5000);
+const gradMat = new THREE.ShaderMaterial({
+  uniforms: {
+    color1: { value: new THREE.Color("#e8e4da") },
+    color2: { value: new THREE.Color("#cfc8b6") }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+    }`,
+  fragmentShader: `
+    uniform vec3 color1;
+    uniform vec3 color2;
+    varying vec2 vUv;
+    void main() {
+      gl_FragColor = vec4(mix(color1, color2, vUv.y), 1.0);
+    }`
+});
+const backgroundPlane = new THREE.Mesh(gradGeo, gradMat);
+backgroundPlane.position.set(0, 0, -2000);
+scene.add(backgroundPlane);
 
 const camera = new THREE.PerspectiveCamera(
   35,
@@ -49,29 +78,50 @@ const renderer = new THREE.WebGLRenderer({
   preserveDrawingBuffer: true
 });
 
+// --- Improved output & tone mapping
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000000, 0);
-renderer.domElement.style.backgroundColor = "#e8e4da";
 container.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ------------------------------------------------
-// Lighting
+// Post-processing (Bloom)
 // ------------------------------------------------
-scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
-keyLight.position.set(60, 70, 40);
-scene.add(keyLight);
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.35,    // strength
+  0.9,     // radius
+  0.0      // threshold
+);
+composer.addPass(bloomPass);
 
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.22);
-fillLight.position.set(-40, 25, -50);
-scene.add(fillLight);
+// ------------------------------------------------
+// Lighting — Product-style, high contrast
+// ------------------------------------------------
+scene.add(new THREE.AmbientLight(0xffffff, 0.15));
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xf0f0f0, 0.15));
+const key = new THREE.DirectionalLight(0xffffff, 1.35);
+key.position.set(80, 120, 60);
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0xffffff, 0.45);
+fill.position.set(-60, 40, -40);
+scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xffffff, 0.55);
+rim.position.set(0, 120, -120);
+scene.add(rim);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xdedede, 0.3));
 
 // ------------------------------------------------
 // CONSTANTS
@@ -110,7 +160,7 @@ function readParams() {
 }
 
 // ------------------------------------------------
-// Micro bump texture
+// Paper bump texture
 // ------------------------------------------------
 function createPaperBumpTexture() {
   const size = 64;
@@ -124,8 +174,8 @@ function createPaperBumpTexture() {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
-      const base = 125 + Math.random() * 20;
-      const gradient = (y / size) * 25;
+      const base = 185 + Math.random() * 25;
+      const gradient = (y / size) * 20;
       const shade = base + gradient;
       d[i] = d[i+1] = d[i+2] = shade;
       d[i+3] = 255;
@@ -147,32 +197,32 @@ function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
   const paperSideMat = new THREE.MeshStandardMaterial({
-    color: 0xfcfcfc,
-    roughness: 0.42,
-    metalness: 0.0,
-    bumpMap: paperBumpTex,
-    bumpScale: 0.03
-  });
-
-  const paperEndMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.72,
-    metalness: 0.0,
-    side: THREE.DoubleSide,
+    roughness: 0.28,
+    metalness: 0,
     bumpMap: paperBumpTex,
     bumpScale: 0.06
   });
 
+  const paperEndMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.5,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    bumpMap: paperBumpTex,
+    bumpScale: 0.12
+  });
+
   const coreSideMat = new THREE.MeshStandardMaterial({
-    color: 0xe6d6bc,
-    roughness: 0.88,
-    metalness: 0.0
+    color: 0xc7a46a,   // more cardboard-like
+    roughness: 0.82,
+    metalness: 0
   });
 
   const holeMat = new THREE.MeshStandardMaterial({
-    color: 0xe4e4e4,
+    color: 0xdadada,
     roughness: 0.9,
-    metalness: 0.0,
+    metalness: 0,
     side: THREE.DoubleSide
   });
 
@@ -200,23 +250,23 @@ function buildRoll(R_outer, R_coreOuter, L) {
   bevelGeom.rotateZ(Math.PI / 2);
 
   const bevelFront = new THREE.Mesh(bevelGeom, paperSideMat);
-  bevelFront.position.x = L/2 - bevelDepth/2;
+  bevelFront.position.x = L / 2 - bevelDepth / 2;
   group.add(bevelFront);
 
   const bevelBack = bevelFront.clone();
-  bevelBack.position.x = -L/2 + bevelDepth/2;
+  bevelBack.position.x = -L / 2 + bevelDepth / 2;
   group.add(bevelBack);
 
   // PAPER ENDS
   const endRingGeom = new THREE.RingGeometry(R_coreOuter, R_outer, 64);
 
   const endFront = new THREE.Mesh(endRingGeom, paperEndMat);
-  endFront.position.x = L/2;
+  endFront.position.x = L / 2;
   endFront.rotation.y = Math.PI / 2;
   group.add(endFront);
 
   const endBack = endFront.clone();
-  endBack.position.x = -L/2;
+  endBack.position.x = -L / 2;
   endBack.rotation.y = -Math.PI / 2;
   group.add(endBack);
 
@@ -243,12 +293,12 @@ function buildRoll(R_outer, R_coreOuter, L) {
   const coreEndRingGeom = new THREE.RingGeometry(R_coreInner, R_coreOuter, 48);
 
   const coreFront = new THREE.Mesh(coreEndRingGeom, coreEndMat);
-  coreFront.position.x = L/2;
+  coreFront.position.x = L / 2;
   coreFront.rotation.y = Math.PI / 2;
   group.add(coreFront);
 
   const coreBack = coreFront.clone();
-  coreBack.position.x = -L/2;
+  coreBack.position.x = -L / 2;
   coreBack.rotation.y = -Math.PI / 2;
   group.add(coreBack);
 
@@ -317,13 +367,25 @@ function resetCamera() {
 }
 
 // ------------------------------------------------
-// Export PNG
+// Export PNG (Hi-Res + optional transparency)
 // ------------------------------------------------
-function exportPNG() {
-  const prev = camDebugPanel.style.display;
+async function exportPNG() {
+  const prevDebug = camDebugPanel.style.display;
   camDebugPanel.style.display = "none";
 
-  renderer.render(scene, camera);
+  const scale = 3;
+  const w = container.clientWidth * scale;
+  const h = container.clientHeight * scale;
+
+  const prevSize = renderer.getSize(new THREE.Vector2());
+  const prevPixelRatio = renderer.getPixelRatio();
+
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(1);
+
+  composer.setSize(w, h);
+  composer.render();
+
   const url = renderer.domElement.toDataURL("image/png");
 
   const a = document.createElement("a");
@@ -331,7 +393,11 @@ function exportPNG() {
   a.download = "toilet-pack.png";
   a.click();
 
-  camDebugPanel.style.display = prev;
+  renderer.setSize(prevSize.x, prevSize.y);
+  renderer.setPixelRatio(prevPixelRatio);
+  composer.setSize(prevSize.x, prevSize.y);
+
+  camDebugPanel.style.display = prevDebug;
 }
 
 // ------------------------------------------------
@@ -361,6 +427,7 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // ------------------------------------------------
@@ -370,6 +437,6 @@ function animate() {
   requestAnimationFrame(animate);
   controls.update();
   updateCameraDebug();
-  renderer.render(scene, camera);
+  composer.render();
 }
 animate();
