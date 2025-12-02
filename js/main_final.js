@@ -1,39 +1,44 @@
-// main_final.js – FIXED AXIS VERSION
-// CHANNEL = Z-axis
-// LANE = X-axis
-// LAYER = Y-axis
+// main_final.js — FINAL CLEAN VERSION WITH AXIS FIX
+// LANE = X  |  CHANNEL = Z  |  LAYER = Y
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
 
+// ---------------------------------------------------------
 // DOM
+// ---------------------------------------------------------
+
 const container = document.getElementById("scene-container");
 const countLabel = document.getElementById("count-label");
 
-const rollsPerLaneEl = document.getElementById("rollsPerRowInput");      // now LANE (X)
-const rollsPerChannelEl = document.getElementById("rowsPerLayerInput"); // now CHANNEL (Z)
-const rollsPerLayerEl = document.getElementById("layersInput");         // now LAYER (Y)
+// NEW IDs (matching corrected index.html labels)
+const rollsPerLaneEl      = document.getElementById("rollsPerLaneInput");     // X
+const rollsPerChannelEl   = document.getElementById("rollsPerChannelInput");  // Z
+const rollsPerLayerEl     = document.getElementById("rollsPerLayerInput");    // Y
 
 const rollDiameterEl = document.getElementById("rollDiameterInput");
 const coreDiameterEl = document.getElementById("coreDiameterInput");
-const rollHeightEl = document.getElementById("rollHeightInput");
-const rollGapEl = document.getElementById("rollGapInput");
+const rollHeightEl   = document.getElementById("rollHeightInput");
+const rollGapEl      = document.getElementById("rollGapInput");
+
 const totalRollsEl = document.getElementById("total-rolls");
 
-const generateBtn = document.getElementById("generateBtn");
+const generateBtn    = document.getElementById("generateBtn");
 const resetCameraBtn = document.getElementById("resetCameraBtn");
-const exportPngBtn = document.getElementById("exportPngBtn");
+const exportPngBtn   = document.getElementById("exportPngBtn");
 
-// CAMERA DEBUG DOM
-const camXEl = document.getElementById("cam-x");
-const camYEl = document.getElementById("cam-y");
-const camZEl = document.getElementById("cam-z");
+const camXEl  = document.getElementById("cam-x");
+const camYEl  = document.getElementById("cam-y");
+const camZEl  = document.getElementById("cam-z");
 const camTxEl = document.getElementById("cam-tx");
 const camTyEl = document.getElementById("cam-ty");
 const camTzEl = document.getElementById("cam-tz");
 const camDebugPanel = document.getElementById("camera-debug");
 
-// SCENE
+// ---------------------------------------------------------
+// Scene + Renderer
+// ---------------------------------------------------------
+
 const scene = new THREE.Scene();
 scene.background = null;
 
@@ -52,34 +57,44 @@ const renderer = new THREE.WebGLRenderer({
 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000000, 0);
 renderer.domElement.style.backgroundColor = "#e8e4da";
 container.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
-// LIGHTING
-scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+// ---------------------------------------------------------
+// Lighting — strong studio lighting
+// ---------------------------------------------------------
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
-keyLight.position.set(60, 70, 40);
-scene.add(keyLight);
+scene.add(new THREE.AmbientLight(0xffffff, 0.05));
 
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.22);
-fillLight.position.set(-40, 25, -50);
-scene.add(fillLight);
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.position.set(90, 120, 70);
+scene.add(key);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xf0f0f0, 0.15));
+const fill = new THREE.DirectionalLight(0xffffff, 1.1);
+fill.position.set(-120, 60, -50);
+scene.add(fill);
 
+const rim = new THREE.DirectionalLight(0xffffff, 0.9);
+rim.position.set(0, 160, -120);
+scene.add(rim);
+
+// ---------------------------------------------------------
 // CONSTANTS
-const MM = 0.1;
+// ---------------------------------------------------------
+
+const MM  = 0.1;
 const EPS = 0.01;
 
 const packGroup = new THREE.Group();
 scene.add(packGroup);
 
-// HELPERS
+// ---------------------------------------------------------
+// Helper functions
+// ---------------------------------------------------------
+
 function getInt(el, fallback) {
   const v = parseInt(el.value, 10);
   return Number.isFinite(v) && v > 0 ? v : fallback;
@@ -92,19 +107,22 @@ function getFloat(el, fallback) {
 
 function readParams() {
   return {
-    rollsPerLane: getInt(rollsPerLaneEl, 4),      // X
-    rollsPerChannel: getInt(rollsPerChannelEl, 3),// Z
-    layers: getInt(rollsPerLayerEl, 2),           // Y
+    rollsPerLane:      getInt(rollsPerLaneEl, 4),     // X
+    rollsPerChannel:   getInt(rollsPerChannelEl, 3),  // Z
+    rollsPerLayer:     getInt(rollsPerLayerEl, 2),    // Y
 
     rollDiameterMm: getFloat(rollDiameterEl, 120),
     coreDiameterMm: getFloat(coreDiameterEl, 45),
-    rollHeightMm: getFloat(rollHeightEl, 100),
+    rollHeightMm:   getFloat(rollHeightEl, 100),
 
     rollGapMm: getFloat(rollGapEl, 7)
   };
 }
 
-// MICRO BUMP TEXTURE
+// ---------------------------------------------------------
+// Paper bump texture
+// ---------------------------------------------------------
+
 function createPaperBumpTexture() {
   const size = 64;
   const canvas = document.createElement("canvas");
@@ -133,10 +151,14 @@ function createPaperBumpTexture() {
 
 const paperBumpTex = createPaperBumpTexture();
 
-// ROLL BUILDER (unchanged except materials)
+// ---------------------------------------------------------
+// Roll builder (with correct materials)
+// ---------------------------------------------------------
+
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
+  // Paper — white-purple tint
   const paperSideMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.96, 0.94, 1.0),
     roughness: 0.55,
@@ -150,7 +172,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
   const paperEndMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.97, 0.95, 1.0),
     roughness: 0.65,
-    metalness: 0,
+    metalness: 0.0,
     bumpMap: paperBumpTex,
     bumpScale: 0.04,
     side: THREE.DoubleSide,
@@ -158,16 +180,17 @@ function buildRoll(R_outer, R_coreOuter, L) {
     emissiveIntensity: 0.45
   });
 
+  // Cardboard core
   const coreSideMat = new THREE.MeshStandardMaterial({
     color: 0xb8925d,
-    roughness: 0.78,
-    metalness: 0
+    roughness: 0.75,
+    metalness: 0.0
   });
 
   const coreInnerMat = new THREE.MeshStandardMaterial({
     color: 0x7a7a7a,
     roughness: 0.85,
-    metalness: 0,
+    metalness: 0.0,
     side: THREE.BackSide,
     emissive: new THREE.Color(0.28, 0.22, 0.15),
     emissiveIntensity: 0.55
@@ -251,44 +274,41 @@ function buildRoll(R_outer, R_coreOuter, L) {
   return group;
 }
 
-// CLEAR PACK
+// ---------------------------------------------------------
+// Pack generation (FIXED AXIS)
+// ---------------------------------------------------------
+
 function clearPack() {
   while (packGroup.children.length)
     packGroup.remove(packGroup.children[0]);
 }
 
-// PACK GENERATION FIXED TO NEW AXES
 function generatePack() {
   const p = readParams();
 
   const R_outer = (p.rollDiameterMm / 2) * MM;
-  const R_core = (p.coreDiameterMm / 2) * MM;
-  const L = p.rollHeightMm * MM;
+  const R_core  = (p.coreDiameterMm / 2) * MM;
+  const L       = p.rollHeightMm * MM;
 
   const D = p.rollDiameterMm * MM;
   const G = p.rollGapMm * MM;
 
-  // AXIS MAPPING FIX:
-  // LANE   = X-axis → rollsPerLane
-  // CHANNEL= Z-axis → rollsPerChannel
-  // LAYER  = Y-axis → layers
+  const spacingX = L + G + EPS;  // LANE → X
+  const spacingY = D + EPS;      // LAYER → Y
+  const spacingZ = D + EPS;      // CHANNEL → Z
 
-  const spacingX = L + G + EPS;
-  const spacingY = D + EPS;
-  const spacingZ = D + EPS;
-
-  const offsetX = -((p.rollsPerLane - 1) * spacingX) / 2;
-  const offsetY = -((p.layers - 1) * spacingY) / 2;
+  const offsetX = -((p.rollsPerLane    - 1) * spacingX) / 2;
+  const offsetY = -((p.rollsPerLayer   - 1) * spacingY) / 2;
   const offsetZ = -((p.rollsPerChannel - 1) * spacingZ) / 2;
 
   clearPack();
 
-  for (let layer = 0; layer < p.layers; layer++) {            // Y
-    for (let channel = 0; channel < p.rollsPerChannel; channel++) { // Z
-      for (let lane = 0; lane < p.rollsPerLane; lane++) {          // X
+  for (let layer = 0; layer < p.rollsPerLayer; layer++) {      // Y
+    for (let lane = 0; lane < p.rollsPerLane; lane++) {        // X
+      for (let channel = 0; channel < p.rollsPerChannel; channel++) {  // Z
 
-        const x = offsetX + lane * spacingX;
-        const y = offsetY + layer * spacingY;
+        const x = offsetX + lane    * spacingX;
+        const y = offsetY + layer   * spacingY;
         const z = offsetZ + channel * spacingZ;
 
         const roll = buildRoll(R_outer, R_core, L);
@@ -298,20 +318,29 @@ function generatePack() {
     }
   }
 
-  const total = p.rollsPerLane * p.rollsPerChannel * p.layers;
+  const total = p.rollsPerLane * p.rollsPerChannel * p.rollsPerLayer;
   totalRollsEl.textContent = total;
-  countLabel.textContent = `${total} rolls`;
+  countLabel.textContent   = `${total} rolls`;
 }
 
-// CAMERA
+// ---------------------------------------------------------
+// Camera
+// ---------------------------------------------------------
+
 function setDefaultCamera() {
   camera.position.set(115.72, 46.43, -81.27);
   controls.target.set(1.40, -7.93, 7.26);
   controls.update();
 }
-function resetCamera() { setDefaultCamera(); }
 
-// EXPORT PNG
+function resetCamera() {
+  setDefaultCamera();
+}
+
+// ---------------------------------------------------------
+// Export PNG
+// ---------------------------------------------------------
+
 function exportPNG() {
   const prev = camDebugPanel.style.display;
   camDebugPanel.style.display = "none";
@@ -327,21 +356,27 @@ function exportPNG() {
   camDebugPanel.style.display = prev;
 }
 
-// CAMERA DEBUG UPDATE
+// ---------------------------------------------------------
+// Camera debug
+// ---------------------------------------------------------
+
 function updateCameraDebug() {
-  camXEl.textContent = camera.position.x.toFixed(2);
-  camYEl.textContent = camera.position.y.toFixed(2);
-  camZEl.textContent = camera.position.z.toFixed(2);
+  camXEl.textContent  = camera.position.x.toFixed(2);
+  camYEl.textContent  = camera.position.y.toFixed(2);
+  camZEl.textContent  = camera.position.z.toFixed(2);
 
   camTxEl.textContent = controls.target.x.toFixed(2);
   camTyEl.textContent = controls.target.y.toFixed(2);
   camTzEl.textContent = controls.target.z.toFixed(2);
 }
 
-// INIT
-generateBtn.onclick = generatePack;
+// ---------------------------------------------------------
+// Init
+// ---------------------------------------------------------
+
+generateBtn.onclick    = generatePack;
 resetCameraBtn.onclick = resetCamera;
-exportPngBtn.onclick = exportPNG;
+exportPngBtn.onclick   = exportPNG;
 
 generatePack();
 setDefaultCamera();
@@ -352,7 +387,10 @@ window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// LOOP
+// ---------------------------------------------------------
+// Loop
+// ---------------------------------------------------------
+
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
