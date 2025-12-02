@@ -1,5 +1,6 @@
 // ===============================
-// main_final.js — WHITE/PURPLE PAPER + BROWN CORE + FIXED LIGHTING
+// main_final.js — FINAL VERSION
+// White/Purple Paper + Brown Core + Lit Cavity
 // ===============================
 
 import * as THREE from "three";
@@ -38,7 +39,6 @@ const camDebugPanel = document.getElementById("camera-debug");
 const scene = new THREE.Scene();
 scene.background = null;
 
-// Camera
 const camera = new THREE.PerspectiveCamera(
   35,
   window.innerWidth / window.innerHeight,
@@ -46,7 +46,6 @@ const camera = new THREE.PerspectiveCamera(
   5000
 );
 
-// Renderer (white-optimized)
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
   alpha: true,
@@ -60,38 +59,31 @@ renderer.toneMappingExposure = 1.0;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
-renderer.domElement.style.backgroundColor = "#faf6eb"; 
-
+renderer.domElement.style.backgroundColor = "#faf6eb";
 container.appendChild(renderer.domElement);
 
-// Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ------------------------------------------------
-// FIXED STUDIO LIGHTING — makes paper actually white
+// Studio Lighting — Strong Enough for White Paper
 // ------------------------------------------------
-
-// Very low ambient
 scene.add(new THREE.AmbientLight(0xffffff, 0.05));
 
-// Key light (main)
 const key = new THREE.DirectionalLight(0xffffff, 2.2);
 key.position.set(90, 120, 70);
 scene.add(key);
 
-// Fill light (softens shadows)
 const fill = new THREE.DirectionalLight(0xffffff, 1.1);
 fill.position.set(-120, 60, -50);
 scene.add(fill);
 
-// Rim light (edge definition)
 const rim = new THREE.DirectionalLight(0xffffff, 0.9);
 rim.position.set(0, 160, -120);
 scene.add(rim);
 
 // ------------------------------------------------
-// CONSTANTS
+// Constants
 // ------------------------------------------------
 const MM  = 0.1;
 const EPS = 0.01;
@@ -127,7 +119,7 @@ function readParams() {
 }
 
 // ------------------------------------------------
-// Paper bump texture
+// Paper Bump Texture
 // ------------------------------------------------
 function createPaperBumpTexture() {
   const size = 64;
@@ -155,47 +147,51 @@ function createPaperBumpTexture() {
 const paperBumpTex = createPaperBumpTexture();
 
 // ------------------------------------------------
-// Roll builder — NEW MATERIALS (purple white + brown core)
+// Roll Builder
 // ------------------------------------------------
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  // PAPER SIDE — white with light purple tint
+  // PAPER SIDE (White + Light Purple Tint)
   const paperSideMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.96, 0.94, 1.0),
-    roughness: 0.55, // IMPORTANT for actually seeing the color
-    metalness: 0,
+    roughness: 0.55,
+    metalness: 0.0,
     bumpMap: paperBumpTex,
     bumpScale: 0.03,
-    emissive: new THREE.Color(0.06, 0.06, 0.08), // subtle lift (fixes gray)
+    emissive: new THREE.Color(0.06, 0.06, 0.08),
     emissiveIntensity: 0.45
   });
 
-  // PAPER END — slightly brighter
+  // PAPER ENDS (Slightly Brighter)
   const paperEndMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.97, 0.95, 1.0),
     roughness: 0.65,
-    metalness: 0,
+    metalness: 0.0,
     bumpMap: paperBumpTex,
-    bumpScale: 0.045,
+    bumpScale: 0.04,
     side: THREE.DoubleSide,
     emissive: new THREE.Color(0.06, 0.06, 0.09),
     emissiveIntensity: 0.45
   });
 
-  // CORE OUTER — brown cardboard
+  // CORE OUTER (Brown Cardboard)
   const coreSideMat = new THREE.MeshStandardMaterial({
     color: 0xb8925d,
     roughness: 0.78,
-    metalness: 0
+    metalness: 0.0
   });
 
-  // CORE INNER — neutral gray
-  const holeMat = new THREE.MeshStandardMaterial({
-    color: 0xd0d0d0,
+  // CORE INNER (Lit Cavity Fix — NO MORE BLACK HOLE)
+  const coreInnerMat = new THREE.MeshStandardMaterial({
+    color: 0x7a7a7a,            // medium warm gray
     roughness: 0.85,
-    metalness: 0,
-    side: THREE.DoubleSide
+    metalness: 0.0,
+    side: THREE.BackSide,       // correct orientation
+
+    // key fix: simulates bounced light inside tube
+    emissive: new THREE.Color(0.28, 0.22, 0.15),
+    emissiveIntensity: 0.55
   });
 
   const coreEndMat = coreSideMat;
@@ -204,7 +200,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
   const R_coreInner = Math.max(0, R_coreOuter - coreThickness);
   const bevelDepth = 0.9 * MM;
 
-  // SIDE CYLINDER
+  // SIDE PAPER CYLINDER
   const sideGeom = new THREE.CylinderGeometry(
     R_outer, R_outer,
     L - bevelDepth * 2,
@@ -242,7 +238,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
   endBack.rotation.y = -Math.PI / 2;
   group.add(endBack);
 
-  // CORE OUTER
+  // CORE OUTER RING
   const coreOuterGeom = new THREE.CylinderGeometry(
     R_coreOuter, R_coreOuter,
     L * 0.97,
@@ -251,15 +247,14 @@ function buildRoll(R_outer, R_coreOuter, L) {
   coreOuterGeom.rotateZ(Math.PI / 2);
   group.add(new THREE.Mesh(coreOuterGeom, coreSideMat));
 
-  // CORE INNER
+  // CORE INNER WALL (BackSide + emissive)
   const coreInnerGeom = new THREE.CylinderGeometry(
     R_coreInner, R_coreInner,
     L * 0.97,
     48, 1, true
   );
   coreInnerGeom.rotateZ(Math.PI / 2);
-  coreInnerGeom.scale(-1, 1, 1);
-  group.add(new THREE.Mesh(coreInnerGeom, holeMat));
+  group.add(new THREE.Mesh(coreInnerGeom, coreInnerMat));
 
   // CORE END RINGS
   const coreEndRingGeom = new THREE.RingGeometry(R_coreInner, R_coreOuter, 48);
@@ -278,7 +273,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
 }
 
 // ------------------------------------------------
-// Pack generation
+// Pack Generation
 // ------------------------------------------------
 function clearPack() {
   while (packGroup.children.length)
@@ -369,7 +364,7 @@ function exportPNG() {
 }
 
 // ------------------------------------------------
-// Debug
+// Camera Debug
 // ------------------------------------------------
 function updateCameraDebug() {
   camXEl.textContent  = camera.position.x.toFixed(2);
@@ -398,7 +393,7 @@ window.addEventListener("resize", () => {
 });
 
 // ------------------------------------------------
-// Loop
+// Animation Loop
 // ------------------------------------------------
 function animate() {
   requestAnimationFrame(animate);
