@@ -1,5 +1,5 @@
 // ===============================
-// main_final.js — WHITE OPTIMIZED VERSION
+// main_final.js — WHITE-PURPLE PAPER + BROWN CORE
 // ===============================
 
 import * as THREE from "three";
@@ -38,7 +38,6 @@ const camDebugPanel = document.getElementById("camera-debug");
 const scene = new THREE.Scene();
 scene.background = null;
 
-// Camera
 const camera = new THREE.PerspectiveCamera(
   35,
   window.innerWidth / window.innerHeight,
@@ -46,47 +45,41 @@ const camera = new THREE.PerspectiveCamera(
   5000
 );
 
-// Renderer
+// Renderer (WHITE-OPTIMIZED)
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
   alpha: true,
   preserveDrawingBuffer: true
 });
 
-// --- CRITICAL: TRUE WHITE OUTPUT ---
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.toneMappingExposure = 1.0;
 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000000, 0); // Transparent WebGL
-renderer.domElement.style.backgroundColor = "#faf6eb"; // UI beige
+renderer.setClearColor(0x000000, 0);
+renderer.domElement.style.backgroundColor = "#faf6eb";
 
 container.appendChild(renderer.domElement);
 
-// Controls
+// Orbit controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ------------------------------------------------
-// Lighting — optimized for white objects
+// Lighting — tuned for white/purple paper
 // ------------------------------------------------
-
-// Soft global base
 scene.add(new THREE.AmbientLight(0xffffff, 0.18));
 
-// Main directional light
 const key = new THREE.DirectionalLight(0xffffff, 1.1);
 key.position.set(75, 95, 55);
 scene.add(key);
 
-// Fill to soften shadows
 const fill = new THREE.DirectionalLight(0xffffff, 0.55);
 fill.position.set(-70, 45, -50);
 scene.add(fill);
 
-// Rim for silhouette definition
 const rim = new THREE.DirectionalLight(0xffffff, 0.22);
 rim.position.set(0, 130, -100);
 scene.add(rim);
@@ -128,7 +121,7 @@ function readParams() {
 }
 
 // ------------------------------------------------
-// Paper bump texture
+// Subtle paper bump texture
 // ------------------------------------------------
 function createPaperBumpTexture() {
   const size = 64;
@@ -140,11 +133,9 @@ function createPaperBumpTexture() {
   const d = img.data;
 
   for (let i = 0; i < size * size; i++) {
-    const shade = 215 + Math.random() * 25; // subtle random bumps
+    const shade = 215 + Math.random() * 25;
     const idx = i * 4;
-    d[idx+0] = shade;
-    d[idx+1] = shade;
-    d[idx+2] = shade;
+    d[idx] = d[idx+1] = d[idx+2] = shade;
     d[idx+3] = 255;
   }
 
@@ -158,23 +149,23 @@ function createPaperBumpTexture() {
 const paperBumpTex = createPaperBumpTexture();
 
 // ------------------------------------------------
-// Roll builder — WHITE OPTIMIZED MATERIALS
+// Roll builder — updated colors (purple paper + brown core)
 // ------------------------------------------------
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  // Paper side — pure white
+  // PAPER SIDE — white with soft purple tint
   const paperSideMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(1, 1, 1),
+    color: new THREE.Color(0.96, 0.94, 1.0), // light lavender-white
     roughness: 0.38,
     metalness: 0,
     bumpMap: paperBumpTex,
     bumpScale: 0.025
   });
 
-  // Paper end
+  // PAPER ENDS — slightly lighter purple
   const paperEndMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(1, 1, 1),
+    color: new THREE.Color(0.97, 0.95, 1.0),
     roughness: 0.55,
     metalness: 0,
     bumpMap: paperBumpTex,
@@ -182,13 +173,14 @@ function buildRoll(R_outer, R_coreOuter, L) {
     side: THREE.DoubleSide
   });
 
-  // Cardboard core
+  // CORE OUTER — cardboard brown
   const coreSideMat = new THREE.MeshStandardMaterial({
-    color: 0xc49a6c,
+    color: 0xb8925d, // warm brown
     roughness: 0.75,
     metalness: 0
   });
 
+  // CORE INNER — neutral gray
   const holeMat = new THREE.MeshStandardMaterial({
     color: 0xd0d0d0,
     roughness: 0.85,
@@ -259,7 +251,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
   coreInnerGeom.scale(-1, 1, 1);
   group.add(new THREE.Mesh(coreInnerGeom, holeMat));
 
-  // CORE ENDS
+  // CORE END RINGS
   const coreEndRingGeom = new THREE.RingGeometry(R_coreInner, R_coreOuter, 48);
 
   const coreFront = new THREE.Mesh(coreEndRingGeom, coreEndMat);
@@ -367,7 +359,7 @@ function exportPNG() {
 }
 
 // ------------------------------------------------
-// Debug display
+// Debug
 // ------------------------------------------------
 function updateCameraDebug() {
   camXEl.textContent  = camera.position.x.toFixed(2);
