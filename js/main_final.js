@@ -1,5 +1,5 @@
 // ===============================
-// main_final.js – realistic, stable, no bloom
+// main_final.js — WHITE OPTIMIZED VERSION
 // ===============================
 
 import * as THREE from "three";
@@ -38,6 +38,7 @@ const camDebugPanel = document.getElementById("camera-debug");
 const scene = new THREE.Scene();
 scene.background = null;
 
+// Camera
 const camera = new THREE.PerspectiveCamera(
   35,
   window.innerWidth / window.innerHeight,
@@ -45,47 +46,49 @@ const camera = new THREE.PerspectiveCamera(
   5000
 );
 
+// Renderer
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
   alpha: true,
   preserveDrawingBuffer: true
 });
 
-// ---- FIXED TONE MAPPING ----
+// --- CRITICAL: TRUE WHITE OUTPUT ---
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.9;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1.0;
 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000000, 0); // transparent WebGL
-renderer.domElement.style.backgroundColor = "#f6f3e7"; // your CSS beige
+renderer.setClearColor(0x000000, 0); // Transparent WebGL
+renderer.domElement.style.backgroundColor = "#faf6eb"; // UI beige
 
 container.appendChild(renderer.domElement);
 
+// Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ------------------------------------------------
-// Lighting – balanced, realistic, no blowing out
+// Lighting — optimized for white objects
 // ------------------------------------------------
 
-// Subtle ambient
-scene.add(new THREE.AmbientLight(0xffffff, 0.08));
+// Soft global base
+scene.add(new THREE.AmbientLight(0xffffff, 0.18));
 
-// Main key light
-const key = new THREE.DirectionalLight(0xffffff, 0.9);
-key.position.set(70, 90, 50);
+// Main directional light
+const key = new THREE.DirectionalLight(0xffffff, 1.1);
+key.position.set(75, 95, 55);
 scene.add(key);
 
-// Fill
-const fill = new THREE.DirectionalLight(0xffffff, 0.35);
-fill.position.set(-60, 40, -50);
+// Fill to soften shadows
+const fill = new THREE.DirectionalLight(0xffffff, 0.55);
+fill.position.set(-70, 45, -50);
 scene.add(fill);
 
-// Rim
-const rim = new THREE.DirectionalLight(0xffffff, 0.25);
-rim.position.set(0, 110, -90);
+// Rim for silhouette definition
+const rim = new THREE.DirectionalLight(0xffffff, 0.22);
+rim.position.set(0, 130, -100);
 scene.add(rim);
 
 // ------------------------------------------------
@@ -136,15 +139,13 @@ function createPaperBumpTexture() {
   const img = ctx.createImageData(size, size);
   const d = img.data;
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4;
-      const base = 180 + Math.random() * 30; // subtle variation
-      const gradient = (y / size) * 20;
-      const shade = base + gradient;
-      d[i] = d[i+1] = d[i+2] = shade;
-      d[i+3] = 255;
-    }
+  for (let i = 0; i < size * size; i++) {
+    const shade = 215 + Math.random() * 25; // subtle random bumps
+    const idx = i * 4;
+    d[idx+0] = shade;
+    d[idx+1] = shade;
+    d[idx+2] = shade;
+    d[idx+3] = 255;
   }
 
   ctx.putImageData(img, 0, 0);
@@ -157,27 +158,27 @@ function createPaperBumpTexture() {
 const paperBumpTex = createPaperBumpTexture();
 
 // ------------------------------------------------
-// Roll builder – CORRECTED MATERIALS
+// Roll builder — WHITE OPTIMIZED MATERIALS
 // ------------------------------------------------
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  // Paper side
+  // Paper side — pure white
   const paperSideMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 0.40,
+    color: new THREE.Color(1, 1, 1),
+    roughness: 0.38,
     metalness: 0,
     bumpMap: paperBumpTex,
-    bumpScale: 0.03
+    bumpScale: 0.025
   });
 
-  // Paper ends
+  // Paper end
   const paperEndMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
+    color: new THREE.Color(1, 1, 1),
     roughness: 0.55,
     metalness: 0,
     bumpMap: paperBumpTex,
-    bumpScale: 0.05,
+    bumpScale: 0.045,
     side: THREE.DoubleSide
   });
 
@@ -188,7 +189,6 @@ function buildRoll(R_outer, R_coreOuter, L) {
     metalness: 0
   });
 
-  // Inside hollow
   const holeMat = new THREE.MeshStandardMaterial({
     color: 0xd0d0d0,
     roughness: 0.85,
@@ -200,7 +200,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
 
   const coreThickness = 1.2 * MM;
   const R_coreInner = Math.max(0, R_coreOuter - coreThickness);
-  const bevelDepth = 1.0 * MM;
+  const bevelDepth = 0.9 * MM;
 
   // SIDE
   const sideGeom = new THREE.CylinderGeometry(
@@ -259,7 +259,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
   coreInnerGeom.scale(-1, 1, 1);
   group.add(new THREE.Mesh(coreInnerGeom, holeMat));
 
-  // CORE END RINGS
+  // CORE ENDS
   const coreEndRingGeom = new THREE.RingGeometry(R_coreInner, R_coreOuter, 48);
 
   const coreFront = new THREE.Mesh(coreEndRingGeom, coreEndMat);
@@ -337,7 +337,7 @@ function resetCamera() {
 }
 
 // ------------------------------------------------
-// Export PNG (hi-res)
+// Export PNG
 // ------------------------------------------------
 function exportPNG() {
   const prevDebug = camDebugPanel.style.display;
@@ -367,7 +367,7 @@ function exportPNG() {
 }
 
 // ------------------------------------------------
-// Debug
+// Debug display
 // ------------------------------------------------
 function updateCameraDebug() {
   camXEl.textContent  = camera.position.x.toFixed(2);
