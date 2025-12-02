@@ -21,7 +21,7 @@
     body { display: flex; flex-direction: column; }
 
     /* ===========================
-       HEADER (unchanged)
+       HEADER
     ============================ */
     header {
       padding: 0.8rem 1.4rem;
@@ -276,18 +276,22 @@
       <h2>Pack Settings</h2>
 
       <div class="field-group">
+
         <div class="field">
-          <label for="rollsPerRowInput">Rolls per row</label>
+          <label for="rollsPerRowInput">Rolls per Channel</label>
           <input id="rollsPerRowInput" type="number" min="1" value="4">
         </div>
+
         <div class="field">
-          <label for="rowsPerLayerInput">Rows per layer</label>
+          <label for="rowsPerLayerInput">Rolls per Lane</label>
           <input id="rowsPerLayerInput" type="number" min="1" value="3">
         </div>
+
         <div class="field">
-          <label for="layersInput">Layers</label>
+          <label for="layersInput">Rolls per Layer</label>
           <input id="layersInput" type="number" min="1" value="2">
         </div>
+
         <div class="field">
           <label>Total rolls</label>
           <span id="total-rolls">–</span>
@@ -299,14 +303,17 @@
           <label for="rollDiameterInput">Roll Ø (mm)</label>
           <input id="rollDiameterInput" type="number" min="10" value="120">
         </div>
+
         <div class="field">
           <label for="coreDiameterInput">Core Ø (mm)</label>
           <input id="coreDiameterInput" type="number" min="5" value="45">
         </div>
+
         <div class="field">
           <label for="rollHeightInput">Height (mm)</label>
           <input id="rollHeightInput" type="number" min="10" value="100">
         </div>
+
         <div class="field">
           <label for="rollGapInput">Roll gap (mm)</label>
           <input id="rollGapInput" type="number" step="0.1" min="0" value="7">
@@ -341,6 +348,6 @@
     }
   </script>
 
-  <script type="module" src="./js/main_final.js?v=6"></script>
+  <script type="module" src="./js/main_final.js?v=7"></script>
 </body>
 </html>
