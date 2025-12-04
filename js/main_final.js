@@ -490,7 +490,14 @@ function updateCameraDebug() {
 // Init
 // ---------------------------------------------------------
 
-generateBtn.onclick    = generatePack;
+generateBtn.onclick = () => {
+  generatePack();
+
+  // Auto-collapse sheet on mobile
+  if (isMobile) {
+    applySheetState(SheetState.COLLAPSED);
+  }
+};
 resetCameraBtn.onclick = setDefaultCamera;
 exportPngBtn.onclick   = exportPNG;
 
