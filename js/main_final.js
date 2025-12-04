@@ -1,15 +1,13 @@
-// main_final.js — desktop + mobile with 3-state bottom sheet
+// main_final.js — Desktop + Mobile (3-state bottom sheet, auto-collapse after Generate)
 // LANE = X | CHANNEL = Z | LAYER = Y
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
 
-// ---------------------------------------------------------
-// DOM
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   ELEMENTS
+------------------------------------------------------------ */
 const container = document.getElementById("scene-container");
-const countLabel = document.getElementById("count-label");
 
 const rollsPerLaneEl    = document.getElementById("rollsPerLaneInput");
 const rollsPerChannelEl = document.getElementById("rollsPerChannelInput");
@@ -21,10 +19,14 @@ const rollHeightEl   = document.getElementById("rollHeightInput");
 const rollGapEl      = document.getElementById("rollGapInput");
 
 const totalRollsEl = document.getElementById("total-rolls");
+const countLabel   = document.getElementById("count-label");
 
 const generateBtn    = document.getElementById("generateBtn");
 const resetCameraBtn = document.getElementById("resetCameraBtn");
 const exportPngBtn   = document.getElementById("exportPngBtn");
+
+const mobileToggleBtn = document.getElementById("mobile-toggle-btn");
+const controlPanel    = document.getElementById("control-panel");
 
 const camDebugPanel = document.getElementById("camera-debug");
 const camXEl  = document.getElementById("cam-x");
@@ -34,12 +36,9 @@ const camTxEl = document.getElementById("cam-tx");
 const camTyEl = document.getElementById("cam-ty");
 const camTzEl = document.getElementById("cam-tz");
 
-const mobileToggleBtn = document.getElementById("mobile-toggle-btn");
-const controlPanel = document.getElementById("control-panel");
-
-// ---------------------------------------------------------
-// Mobile bottom sheet logic (S2: collapsed / half / full)
-// ---------------------------------------------------------
+/* ------------------------------------------------------------
+   MOBILE BOTTOM SHEET LOGIC (S2: collapsed / half / full)
+------------------------------------------------------------ */
 
 const isMobile = window.matchMedia("(max-width: 800px)").matches;
 
@@ -53,130 +52,105 @@ let sheetState = SheetState.HALF;
 let sheetOffsets = { collapsed: 0, half: 0, full: 0 };
 let currentOffsetPx = 0;
 
-// compute real viewport height and offsets
+/* Update vw/vh because iOS Safari lies about vh */
 function updateViewportHeight() {
   const vh = window.innerHeight;
   document.documentElement.style.setProperty("--vh", vh + "px");
 
   sheetOffsets.full = 0;
-  sheetOffsets.half = vh * 0.45;          // ~45% visible sheet
-  sheetOffsets.collapsed = vh - 56;       // show ~56px bar
+  sheetOffsets.half = vh * 0.45;
+  sheetOffsets.collapsed = vh - 56;
 
   applySheetState(sheetState, false);
 }
+updateViewportHeight();
+window.addEventListener("resize", updateViewportHeight);
+window.addEventListener("orientationchange", updateViewportHeight);
 
 function applySheetState(state, animate = true) {
   sheetState = state;
 
-  let offset;
-  if (state === SheetState.FULL) offset = sheetOffsets.full;
-  else if (state === SheetState.HALF) offset = sheetOffsets.half;
-  else offset = sheetOffsets.collapsed;
+  let offset =
+    state === SheetState.FULL ? sheetOffsets.full :
+    state === SheetState.HALF ? sheetOffsets.half :
+    sheetOffsets.collapsed;
 
   currentOffsetPx = offset;
-  document.documentElement.style.setProperty(
-    "--sheet-translateY",
-    offset + "px"
-  );
+  document.documentElement.style.setProperty("--sheet-translateY", offset + "px");
 
-  if (!animate) {
-    // Safari sometimes needs a reflow “kick”
-    void document.body.offsetHeight;
-  }
+  if (!animate) void document.body.offsetHeight;
 
-  // toggle button label
   if (mobileToggleBtn) {
-    if (sheetState === SheetState.COLLAPSED) {
-      mobileToggleBtn.textContent = "Pack Settings";
-    } else if (sheetState === SheetState.HALF) {
-      mobileToggleBtn.textContent = "Pack Settings ▲";
-    } else {
-      mobileToggleBtn.textContent = "Close ▲";
-    }
+    if (state === SheetState.COLLAPSED) mobileToggleBtn.textContent = "Pack Settings";
+    if (state === SheetState.HALF)      mobileToggleBtn.textContent = "Pack Settings ▲";
+    if (state === SheetState.FULL)      mobileToggleBtn.textContent = "Close ▲";
   }
 }
 
 if (isMobile) {
-  // initial state: collapsed if very short screens, else half
   sheetState = window.innerHeight < 700 ? SheetState.COLLAPSED : SheetState.HALF;
-  updateViewportHeight();
+  applySheetState(sheetState, false);
 
-  window.addEventListener("resize", () => updateViewportHeight());
-  window.addEventListener("orientationchange", () => updateViewportHeight());
-
-  // toggle button cycles between collapsed / half / full
-  mobileToggleBtn?.addEventListener("click", () => {
+  // Toggle cycle
+  mobileToggleBtn.addEventListener("click", () => {
     if (sheetState === SheetState.COLLAPSED) applySheetState(SheetState.HALF);
     else if (sheetState === SheetState.HALF) applySheetState(SheetState.FULL);
     else applySheetState(SheetState.HALF);
   });
 
-  // drag to move sheet
-  let dragStartY = null;
-  let dragStartOffset = null;
+  // Drag handling
   let dragging = false;
+  let dragStartY = 0;
+  let dragStartOffset = 0;
 
-  function touchOnInteractive(el) {
-    return !!el.closest("input, button, select, textarea");
+  function interactiveElement(el) {
+    return el.closest("input, button, select, textarea");
   }
 
-  controlPanel.addEventListener(
-    "touchstart",
-    (e) => {
-      if (e.touches.length !== 1) return;
-      if (touchOnInteractive(e.target)) return; // don't start drag on inputs
-      dragging = true;
-      dragStartY = e.touches[0].clientY;
-      dragStartOffset = currentOffsetPx;
-    },
-    { passive: true }
-  );
+  controlPanel.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    if (interactiveElement(e.target)) return;
+    dragging = true;
+    dragStartY = e.touches[0].clientY;
+    dragStartOffset = currentOffsetPx;
+  });
 
-  controlPanel.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!dragging || e.touches.length !== 1) return;
-      const dy = e.touches[0].clientY - dragStartY;
-      let newOffset = dragStartOffset + dy;
-      const min = sheetOffsets.full;
-      const max = sheetOffsets.collapsed;
-      if (newOffset < min) newOffset = min;
-      if (newOffset > max) newOffset = max;
-      currentOffsetPx = newOffset;
-      document.documentElement.style.setProperty(
-        "--sheet-translateY",
-        newOffset + "px"
-      );
-    },
-    { passive: true }
-  );
+  controlPanel.addEventListener("touchmove", (e) => {
+    if (!dragging) return;
+    const dy = e.touches[0].clientY - dragStartY;
+    let newOffset = dragStartOffset + dy;
+    newOffset = Math.min(sheetOffsets.collapsed, Math.max(sheetOffsets.full, newOffset));
+    currentOffsetPx = newOffset;
+    document.documentElement.style.setProperty("--sheet-translateY", newOffset + "px");
+  });
 
-  function snapSheet() {
+  function snap() {
     dragging = false;
-    const dFull = Math.abs(currentOffsetPx - sheetOffsets.full);
-    const dHalf = Math.abs(currentOffsetPx - sheetOffsets.half);
-    const dCol  = Math.abs(currentOffsetPx - sheetOffsets.collapsed);
+    const diffFull = Math.abs(currentOffsetPx - sheetOffsets.full);
+    const diffHalf = Math.abs(currentOffsetPx - sheetOffsets.half);
+    const diffCol  = Math.abs(currentOffsetPx - sheetOffsets.collapsed);
 
     let target = SheetState.HALF;
-    let best = dHalf;
-    if (dFull < best) { best = dFull; target = SheetState.FULL; }
-    if (dCol  < best) { best = dCol;  target = SheetState.COLLAPSED; }
+    let best = diffHalf;
+    if (diffFull < best) { best = diffFull; target = SheetState.FULL; }
+    if (diffCol  < best) { best = diffCol;  target = SheetState.COLLAPSED; }
 
     applySheetState(target);
   }
 
-  controlPanel.addEventListener("touchend", snapSheet);
-  controlPanel.addEventListener("touchcancel", snapSheet);
-} else {
-  // desktop: ensure CSS variables are sensible
-  document.documentElement.style.setProperty("--vh", window.innerHeight + "px");
-  document.documentElement.style.setProperty("--sheet-translateY", "0px");
+  controlPanel.addEventListener("touchend", snap);
+  controlPanel.addEventListener("touchcancel", snap);
+
+  // Tap canvas collapses panel
+  renderer?.domElement?.addEventListener("pointerdown", () => {
+    if (sheetState !== SheetState.COLLAPSED)
+      applySheetState(SheetState.COLLAPSED);
+  });
 }
 
-// ---------------------------------------------------------
-// THREE Scene
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   THREE.JS SCENE
+------------------------------------------------------------ */
 const scene = new THREE.Scene();
 scene.background = null;
 
@@ -194,7 +168,7 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.domElement.style.backgroundColor = "#e8e4da";
+renderer.domElement.style.background = "#e8e4da";
 container.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -206,17 +180,9 @@ if (isMobile) {
   controls.panSpeed = 0.35;
 }
 
-// Optional: tap canvas to collapse sheet
-if (isMobile) {
-  renderer.domElement.addEventListener("pointerdown", () => {
-    if (sheetState !== SheetState.COLLAPSED) applySheetState(SheetState.COLLAPSED);
-  });
-}
-
-// ---------------------------------------------------------
-// Lighting
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   LIGHTING
+------------------------------------------------------------ */
 scene.add(new THREE.AmbientLight(0xffffff, 0.08));
 
 const key = new THREE.DirectionalLight(0xffffff, 2.1);
@@ -231,25 +197,21 @@ const rim = new THREE.DirectionalLight(0xffffff, 0.9);
 rim.position.set(0, 160, -120);
 scene.add(rim);
 
-// ---------------------------------------------------------
-// Constants & pack group
-// ---------------------------------------------------------
-
-const MM  = 0.1;
+/* ------------------------------------------------------------
+   CONSTANTS + GROUP
+------------------------------------------------------------ */
+const MM = 0.1;
 const EPS = 0.01;
-
 const packGroup = new THREE.Group();
 scene.add(packGroup);
 
-// ---------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   HELPERS
+------------------------------------------------------------ */
 function getInt(el, fb) {
   const v = parseInt(el.value, 10);
   return Number.isFinite(v) && v > 0 ? v : fb;
 }
-
 function getFloat(el, fb) {
   const v = parseFloat(el.value);
   return Number.isFinite(v) && v >= 0 ? v : fb;
@@ -268,10 +230,9 @@ function readParams() {
   };
 }
 
-// ---------------------------------------------------------
-// Paper bump texture
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   PAPER TEXTURE
+------------------------------------------------------------ */
 function createPaperBumpTexture() {
   const size = 64;
   const canvas = document.createElement("canvas");
@@ -280,7 +241,6 @@ function createPaperBumpTexture() {
 
   const img = ctx.createImageData(size, size);
   const d = img.data;
-
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
@@ -289,43 +249,38 @@ function createPaperBumpTexture() {
       d[i+3] = 255;
     }
   }
-
   ctx.putImageData(img, 0, 0);
+
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
-
 const paperBumpTex = createPaperBumpTexture();
 
-// ---------------------------------------------------------
-// Roll builder
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   BUILD ROLL
+------------------------------------------------------------ */
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  const paperSideMat = new THREE.MeshStandardMaterial({
+  const paperSide = new THREE.MeshStandardMaterial({
     color: 0xf7f7ff,
     roughness: 0.55,
     bumpMap: paperBumpTex,
     bumpScale: 0.03
   });
-
-  const paperEndMat = new THREE.MeshStandardMaterial({
+  const paperEnd = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.65,
     bumpMap: paperBumpTex,
     bumpScale: 0.04,
     side: THREE.DoubleSide
   });
-
-  const coreSideMat = new THREE.MeshStandardMaterial({
+  const coreSide = new THREE.MeshStandardMaterial({
     color: 0xb8925d,
     roughness: 0.75
   });
-
-  const coreInnerMat = new THREE.MeshStandardMaterial({
+  const coreInner = new THREE.MeshStandardMaterial({
     color: 0x7a7a7a,
     roughness: 0.85,
     side: THREE.BackSide
@@ -336,175 +291,146 @@ function buildRoll(R_outer, R_coreOuter, L) {
   const bevelDepth = 1.0 * MM;
 
   const sideGeom = new THREE.CylinderGeometry(
-    R_outer, R_outer,
-    L - bevelDepth * 2,
-    64, 1, true
+    R_outer, R_outer, L - bevelDepth * 2, 64, 1, true
   );
   sideGeom.rotateZ(Math.PI / 2);
-  group.add(new THREE.Mesh(sideGeom, paperSideMat));
+  group.add(new THREE.Mesh(sideGeom, paperSide));
 
-  const bevelGeom = new THREE.CylinderGeometry(
-    R_outer, R_outer,
-    bevelDepth,
-    48, 1, true
-  );
+  const bevelGeom = new THREE.CylinderGeometry(R_outer, R_outer, bevelDepth, 48, 1, true);
   bevelGeom.rotateZ(Math.PI / 2);
 
-  const bevelFront = new THREE.Mesh(bevelGeom, paperSideMat);
-  bevelFront.position.x = L/2 - bevelDepth/2;
-  group.add(bevelFront);
+  const bf = new THREE.Mesh(bevelGeom, paperSide);
+  bf.position.x = L/2 - bevelDepth/2;
+  group.add(bf);
 
-  const bevelBack = bevelFront.clone();
-  bevelBack.position.x = -L/2 + bevelDepth/2;
-  group.add(bevelBack);
+  const bb = bf.clone();
+  bb.position.x = -L/2 + bevelDepth/2;
+  group.add(bb);
 
-  const endRingGeom = new THREE.RingGeometry(R_coreOuter, R_outer, 64);
+  const endGeom = new THREE.RingGeometry(R_coreOuter, R_outer, 64);
+  const ef = new THREE.Mesh(endGeom, paperEnd);
+  ef.position.x = L/2;
+  ef.rotation.y = Math.PI/2;
+  group.add(ef);
 
-  const endFront = new THREE.Mesh(endRingGeom, paperEndMat);
-  endFront.position.x = L/2;
-  endFront.rotation.y = Math.PI / 2;
-  group.add(endFront);
+  const eb = ef.clone();
+  eb.position.x = -L/2;
+  eb.rotation.y = -Math.PI/2;
+  group.add(eb);
 
-  const endBack = endFront.clone();
-  endBack.position.x = -L/2;
-  endBack.rotation.y = -Math.PI / 2;
-  group.add(endBack);
+  const coreOutGeom = new THREE.CylinderGeometry(R_coreOuter, R_coreOuter, L * 0.97, 48, 1, true);
+  coreOutGeom.rotateZ(Math.PI/2);
+  group.add(new THREE.Mesh(coreOutGeom, coreSide));
 
-  const coreOuterGeom = new THREE.CylinderGeometry(
-    R_coreOuter, R_coreOuter,
-    L * 0.97,
-    48, 1, true
-  );
-  coreOuterGeom.rotateZ(Math.PI / 2);
-  group.add(new THREE.Mesh(coreOuterGeom, coreSideMat));
-
-  const coreInnerGeom = new THREE.CylinderGeometry(
-    R_coreInner, R_coreInner,
-    L * 0.97,
-    48, 1, true
-  );
-  coreInnerGeom.rotateZ(Math.PI / 2);
-  group.add(new THREE.Mesh(coreInnerGeom, coreInnerMat));
+  const coreInGeom = new THREE.CylinderGeometry(R_coreInner, R_coreInner, L * 0.97, 48, 1, true);
+  coreInGeom.rotateZ(Math.PI/2);
+  group.add(new THREE.Mesh(coreInGeom, coreInner));
 
   return group;
 }
 
-// ---------------------------------------------------------
-// Pack generation
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   PACK GENERATION
+------------------------------------------------------------ */
 function clearPack() {
-  while (packGroup.children.length) {
-    packGroup.remove(packGroup.children[0]);
-  }
+  while (packGroup.children.length) packGroup.remove(packGroup.children[0]);
 }
 
 function generatePack() {
   const p = readParams();
 
-  const R_outer = (p.rollDiameterMm / 2) * MM;
-  const R_core  = (p.coreDiameterMm / 2) * MM;
+  const R_outer = p.rollDiameterMm * 0.5 * MM;
+  const R_core  = p.coreDiameterMm * 0.5 * MM;
   const L       = p.rollHeightMm * MM;
 
   const D = p.rollDiameterMm * MM;
   const G = p.rollGapMm * MM;
 
-  const spacingX = L + G + EPS; // lane (X)
-  const spacingY = D + EPS;     // layer (Y)
-  const spacingZ = D + EPS;     // channel (Z)
+  const spacingX = L + G + EPS;
+  const spacingY = D + EPS;
+  const spacingZ = D + EPS;
 
-  const offsetX = -((p.rollsPerLane    - 1) * spacingX) / 2;
-  const offsetY = -((p.rollsPerLayer   - 1) * spacingY) / 2;
-  const offsetZ = -((p.rollsPerChannel - 1) * spacingZ) / 2;
+  const offX = -((p.rollsPerLane - 1) * spacingX) / 2;
+  const offY = -((p.rollsPerLayer - 1) * spacingY) / 2;
+  const offZ = -((p.rollsPerChannel - 1) * spacingZ) / 2;
 
   clearPack();
 
-  for (let layer = 0; layer < p.rollsPerLayer; layer++) {
-    for (let lane = 0; lane < p.rollsPerLane; lane++) {
-      for (let channel = 0; channel < p.rollsPerChannel; channel++) {
-        const roll = buildRoll(R_outer, R_core, L);
-        roll.position.set(
-          offsetX + lane    * spacingX,
-          offsetY + layer   * spacingY,
-          offsetZ + channel * spacingZ
-        );
-        packGroup.add(roll);
-      }
-    }
+  for (let y = 0; y < p.rollsPerLayer; y++)
+  for (let x = 0; x < p.rollsPerLane; x++)
+  for (let z = 0; z < p.rollsPerChannel; z++) {
+    const roll = buildRoll(R_outer, R_core, L);
+    roll.position.set(
+      offX + x * spacingX,
+      offY + y * spacingY,
+      offZ + z * spacingZ
+    );
+    packGroup.add(roll);
   }
 
   const total = p.rollsPerLane * p.rollsPerChannel * p.rollsPerLayer;
   totalRollsEl.textContent = total;
-  countLabel.textContent   = `${total} rolls`;
+  countLabel.textContent = `${total} rolls`;
+
+  // AUTO-COLLAPSE ON MOBILE
+  if (isMobile) applySheetState(SheetState.COLLAPSED);
 }
 
-// ---------------------------------------------------------
-// Camera
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   CAMERA
+------------------------------------------------------------ */
 function setDefaultCamera() {
   camera.position.set(115, 46, -81);
   controls.target.set(0, 0, 0);
   controls.update();
 }
 
-// ---------------------------------------------------------
-// Export PNG — filename toilet_pack_Channel_Lane_Layer.png
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   PNG EXPORT
+------------------------------------------------------------ */
 function exportPNG() {
-  const prevDisplay = camDebugPanel.style.display;
+  const prev = camDebugPanel.style.display;
   camDebugPanel.style.display = "none";
 
   renderer.render(scene, camera);
-  const url = renderer.domElement.toDataURL("image/png");
+  const dataURL = renderer.domElement.toDataURL("image/png");
 
   const p = readParams();
-  const filename = `toilet_pack_${p.rollsPerChannel}_${p.rollsPerLane}_${p.rollsPerLayer}.png`;
+  const name = `toilet_pack_${p.rollsPerChannel}_${p.rollsPerLane}_${p.rollsPerLayer}.png`;
 
   const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
+  a.href = dataURL;
+  a.download = name;
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
+  a.remove();
 
-  camDebugPanel.style.display = prevDisplay;
+  camDebugPanel.style.display = prev;
 }
 
-// ---------------------------------------------------------
-// Camera debug
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   DEBUG (DESKTOP ONLY)
+------------------------------------------------------------ */
 function updateCameraDebug() {
-  if (!camDebugPanel || isMobile) return;
-  camXEl.textContent  = camera.position.x.toFixed(2);
-  camYEl.textContent  = camera.position.y.toFixed(2);
-  camZEl.textContent  = camera.position.z.toFixed(2);
-  camTxEl.textContent = controls.target.x.toFixed(2);
-  camTyEl.textContent = controls.target.y.toFixed(2);
-  camTzEl.textContent = controls.target.z.toFixed(2);
+  if (isMobile) return;
+  camXEl.textContent  = camera.position.x.toFixed(1);
+  camYEl.textContent  = camera.position.y.toFixed(1);
+  camZEl.textContent  = camera.position.z.toFixed(1);
+  camTxEl.textContent = controls.target.x.toFixed(1);
+  camTyEl.textContent = controls.target.y.toFixed(1);
+  camTzEl.textContent = controls.target.z.toFixed(1);
 }
 
-// ---------------------------------------------------------
-// Init
-// ---------------------------------------------------------
-
-generateBtn.onclick = () => {
-  generatePack();
-
-  // Auto-collapse sheet on mobile
-  if (isMobile) {
-    applySheetState(SheetState.COLLAPSED);
-  }
-};
+/* ------------------------------------------------------------
+   INIT
+------------------------------------------------------------ */
+generateBtn.onclick = generatePack;
 resetCameraBtn.onclick = setDefaultCamera;
-exportPngBtn.onclick   = exportPNG;
+exportPngBtn.onclick = exportPNG;
 
 generatePack();
 setDefaultCamera();
 
-// handle resize
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -512,10 +438,9 @@ window.addEventListener("resize", () => {
   if (isMobile) updateViewportHeight();
 });
 
-// ---------------------------------------------------------
-// Loop
-// ---------------------------------------------------------
-
+/* ------------------------------------------------------------
+   LOOP
+------------------------------------------------------------ */
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
