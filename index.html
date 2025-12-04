@@ -11,12 +11,13 @@
       margin: 0; padding: 0;
       width: 100%; height: 100%;
       overflow: hidden;
+      font-family: system-ui, sans-serif;
       background: transparent;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+
     body { display: flex; flex-direction: column; }
 
-    /* HEADER (Desktop only) */
+    /* DESKTOP HEADER */
     header {
       padding: 0.8rem 1.4rem;
       display: flex;
@@ -27,30 +28,46 @@
       color: #e5e7eb;
     }
     header h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.12em; }
-    .subtitle { color: #9ca3af; font-size: 0.9rem; }
-    #count-label { font-weight: 600; }
 
-    /* HIDE HEADER ON MOBILE */
-    @media (max-width: 800px) {
-      header { display: none; }
+    @media (max-width: 800px) { header { display: none; } }
+
+    /* MAIN CANVAS AREA */
+    main {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
     }
 
-    /* SCENE */
-    main { position: relative; flex: 1; }
-    #scene-container { position: absolute; inset: 0; z-index: 0; }
-
-    canvas { position: absolute; inset: 0; z-index: 1; display: block; }
+    #scene-container {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: block;
+    }
 
     #hint {
-      position: absolute; left: 50%; bottom: 0.8rem; transform: translateX(-50%);
-      background: rgba(15,23,42,0.9); padding: 0.35rem 0.8rem; border-radius: 999px;
-      color: #9ca3af; font-size: 0.85rem; z-index: 50;
+      position: absolute;
+      left: 50%;
+      bottom: 0.8rem;
+      transform: translateX(-50%);
+      background: rgba(15,23,42,0.9);
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      color: #9ca3af;
+      font-size: 0.85rem;
+      z-index: 50;
     }
 
     /* DESKTOP PANEL */
     #control-panel {
       position: absolute;
-      top: 1.4rem; left: 1.4rem;
+      top: 1.4rem;
+      left: 1.4rem;
       width: 330px;
       backdrop-filter: blur(14px) saturate(160%);
       background: rgba(22, 28, 41, 0.78);
@@ -60,30 +77,28 @@
       z-index: 20;
       color: #e7e9f0;
       overflow: hidden;
-      transition: transform 0.35s ease, opacity 0.25s ease;
+      transition: transform .3s ease;
     }
 
-    /* MOBILE PANEL — bottom drawer */
+    /* MOBILE PANEL → bottom drawer (fixed height) */
     @media (max-width: 800px) {
       #control-panel {
         position: fixed;
         left: 0; right: 0;
         bottom: 0;
-        margin: 0 auto;
-        width: 100%;
-        max-width: none;
+        height: 50vh;               /* ← FIXED DRAWER HEIGHT (50%) */
+        transform: translateY(0%);
         border-radius: 1.2rem 1.2rem 0 0;
-        padding: 1.2rem 1.4rem;
-        transform: translateY(0);
+        padding: 1.4rem;
+        width: 100%;
       }
 
+      /* COLLAPSED STATE → only 48px visible */
       body.mobile-collapsed #control-panel {
-        transform: translateY(78%);
+        transform: translateY(calc(50vh - 48px));
       }
 
-      #hint {
-        bottom: 6rem; /* move hint above panel */
-      }
+      #hint { bottom: 52vh; } /* keep hint above drawer */
     }
 
     /* MOBILE TOGGLE BUTTON */
@@ -91,157 +106,116 @@
       display: none;
       position: fixed;
       bottom: 0.4rem;
-      left: 50%; transform: translateX(-50%);
+      left: 50%;
+      transform: translateX(-50%);
       padding: 0.55rem 1.3rem;
       background: rgba(40,45,65,0.9);
       color: #f0f0f0;
       border-radius: 0.7rem;
-      z-index: 40;
       font-size: 1rem;
       font-weight: 600;
       border: 1px solid rgba(255,255,255,0.15);
       backdrop-filter: blur(10px);
+      z-index: 40;
     }
+    @media (max-width: 800px) { #mobile-toggle-btn { display: block; } }
 
-    @media (max-width: 800px) {
-      #mobile-toggle-btn { display: block; }
-    }
-
-    /* INPUTS */
-    .field-group { 
-      display: flex; flex-direction: column; gap: 0.85rem;
-      margin-bottom: 1.2rem; padding-bottom: 0.8rem;
+    /* INPUT GROUPS */
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.8rem;
       border-bottom: 1px solid rgba(255,255,255,0.1);
     }
-
-    .field {
-      display: flex; justify-content: space-between;
-      align-items: center; gap: 1rem;
-    }
-
-    .field label {
-      flex: 1.2; color: #d6daeb; font-size: 1rem;
-    }
-
+    .field { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .field label { flex: 1.2; color: #d6daeb; }
     .field input {
-      width: 120px; padding: 0.55rem 0.7rem;
+      width: 120px;
+      padding: 0.55rem 0.7rem;
       border-radius: 0.55rem;
       border: 1px solid rgba(255,255,255,0.22);
       background: rgba(0,0,0,0.35);
-      color: #fff; font-size: 1rem;
+      color: #fff;
+      font-size: 1rem;
     }
 
-    /* MOBILE INPUTS → larger & stacked if needed */
+    /* MOBILE INPUTS STACK */
     @media (max-width: 800px) {
       .field { flex-direction: column; align-items: flex-start; }
       .field input { width: 100%; }
-      .field label { margin-bottom: 0.25rem; }
     }
 
     /* BUTTON ROW */
     .buttons-row {
-      display: flex; flex-wrap: wrap;
-      gap: 0.65rem; margin-top: 0.7rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 0.7rem;
     }
-
     .buttons-row button {
       flex: 1 1 auto;
       padding: 0.6rem 1.2rem;
       border-radius: 0.8rem;
-      cursor: pointer;
-      font-size: 1rem; font-weight: 600;
-      background: linear-gradient(135deg, #7065ff, #5246e3);
-      color: white; border: none;
+      font-size: 1rem;
+      font-weight: 600;
       white-space: nowrap;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, #7065ff, #5246e3);
+      color: white;
     }
-
-    button.secondary {
+    .buttons-row .secondary {
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.18);
     }
 
     /* HIDE CAMERA DEBUG ON MOBILE */
+    @media (max-width: 800px) {
+      #camera-debug { display: none; }
+    }
+
     #camera-debug {
       position: absolute; top: 1.4rem; right: 1.4rem;
       background: rgba(20,23,33,0.75);
-      backdrop-filter: blur(12px);
       padding: 1rem 1.2rem;
       border-radius: 0.9rem;
       color: #dadcef;
-      font-size: 0.95rem;
-      line-height: 1.45;
       border: 1px solid rgba(255,255,255,0.1);
-      z-index: 20;
-    }
-
-    @media (max-width: 800px) {
-      #camera-debug { display: none; }
+      z-index: 30;
     }
   </style>
 </head>
 
 <body>
 
-  <!-- MOBILE TOGGLE BUTTON -->
   <button id="mobile-toggle-btn">Pack Settings</button>
 
   <header>
-    <div class="title-block">
-      <h1>In Rolls We Trust</h1>
-      <span class="subtitle">Sideways rolls · Three.js</span>
-    </div>
-    <div><span id="count-label">– rolls</span></div>
+    <h1>In Rolls We Trust</h1>
+    <span id="count-label">– rolls</span>
   </header>
 
   <main>
     <div id="scene-container"></div>
-
-    <div id="hint">Left: Rotate · Right/Middle: Pan · Scroll: Zoom · Pinch: Zoom</div>
+    <div id="hint">Rotate: Drag · Pan: Two Fingers · Zoom: Pinch</div>
 
     <div id="control-panel">
       <h2>Pack Settings</h2>
 
       <div class="field-group">
-        
-        <!-- ORDER: CHANNEL → LANE → LAYER -->
-        <div class="field">
-          <label for="rollsPerChannelInput">Rolls per Channel</label>
-          <input id="rollsPerChannelInput" type="number" min="1" value="3">
-        </div>
-
-        <div class="field">
-          <label for="rollsPerLaneInput">Rolls per Lane</label>
-          <input id="rollsPerLaneInput" type="number" min="1" value="4">
-        </div>
-
-        <div class="field">
-          <label for="rollsPerLayerInput">Rolls per Layer</label>
-          <input id="rollsPerLayerInput" type="number" min="1" value="2">
-        </div>
-
-        <div class="field">
-          <label>Total rolls</label>
-          <span id="total-rolls">–</span>
-        </div>
+        <div class="field"><label for="rollsPerChannelInput">Rolls per Channel</label><input id="rollsPerChannelInput" type="number" min="1" value="3"></div>
+        <div class="field"><label for="rollsPerLaneInput">Rolls per Lane</label><input id="rollsPerLaneInput" type="number" min="1" value="4"></div>
+        <div class="field"><label for="rollsPerLayerInput">Rolls per Layer</label><input id="rollsPerLayerInput" type="number" min="1" value="2"></div>
+        <div class="field"><label>Total rolls</label><span id="total-rolls">–</span></div>
       </div>
 
       <div class="field-group">
-        <div class="field">
-          <label for="rollDiameterInput">Roll Ø (mm)</label>
-          <input id="rollDiameterInput" type="number" min="10" value="120">
-        </div>
-        <div class="field">
-          <label for="coreDiameterInput">Core Ø (mm)</label>
-          <input id="coreDiameterInput" type="number" min="5" value="45">
-        </div>
-        <div class="field">
-          <label for="rollHeightInput">Height (mm)</label>
-          <input id="rollHeightInput" type="number" min="10" value="100">
-        </div>
-        <div class="field">
-          <label for="rollGapInput">Roll gap (mm)</label>
-          <input id="rollGapInput" type="number" min="0" value="7">
-        </div>
+        <div class="field"><label for="rollDiameterInput">Roll Ø (mm)</label><input id="rollDiameterInput" type="number" value="120"></div>
+        <div class="field"><label for="coreDiameterInput">Core Ø (mm)</label><input id="coreDiameterInput" type="number" value="45"></div>
+        <div class="field"><label for="rollHeightInput">Height (mm)</label><input id="rollHeightInput" type="number" value="100"></div>
+        <div class="field"><label for="rollGapInput">Roll gap (mm)</label><input id="rollGapInput" type="number" value="7"></div>
       </div>
 
       <div class="buttons-row">
@@ -252,21 +226,18 @@
     </div>
 
     <div id="camera-debug">
-      <strong>Camera</strong><br>
-      x: <span id="cam-x">–</span><br>
-      y: <span id="cam-y">–</span><br>
-      z: <span id="cam-z">–</span><br>
-      <strong>Target</strong><br>
-      tx: <span id="cam-tx">–</span><br>
-      ty: <span id="cam-ty">–</span><br>
-      tz: <span id="cam-tz">–</span>
+      x:<span id="cam-x">–</span><br>
+      y:<span id="cam-y">–</span><br>
+      z:<span id="cam-z">–</span><br>
+      tx:<span id="cam-tx">–</span><br>
+      ty:<span id="cam-ty">–</span><br>
+      tz:<span id="cam-tz">–</span>
     </div>
   </main>
 
   <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.165.0/build/three.module.js" } }
   </script>
-
-  <script type="module" src="./js/main_final.js?v=200"></script>
+  <script type="module" src="./js/main_final.js?v=300"></script>
 </body>
 </html>
