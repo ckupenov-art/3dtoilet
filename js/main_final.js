@@ -1,5 +1,4 @@
-// main_final.js — FINAL CLEAN VERSION WITH AXIS FIX
-// LANE = X  |  CHANNEL = Z  |  LAYER = Y
+// main_final.js — updated with custom PNG filename
 
 import * as THREE from "three";
 import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/controls/OrbitControls.js";
@@ -11,7 +10,7 @@ import { OrbitControls } from "https://unpkg.com/three@0.165.0/examples/jsm/cont
 const container = document.getElementById("scene-container");
 const countLabel = document.getElementById("count-label");
 
-// NEW IDs (matching corrected index.html labels)
+// Inputs (order in UI changed but functionality stays same)
 const rollsPerLaneEl      = document.getElementById("rollsPerLaneInput");     // X
 const rollsPerChannelEl   = document.getElementById("rollsPerChannelInput");  // Z
 const rollsPerLayerEl     = document.getElementById("rollsPerLayerInput");    // Y
@@ -64,7 +63,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 
 // ---------------------------------------------------------
-// Lighting — strong studio lighting
+// Lighting
 // ---------------------------------------------------------
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.05));
@@ -82,7 +81,7 @@ rim.position.set(0, 160, -120);
 scene.add(rim);
 
 // ---------------------------------------------------------
-// CONSTANTS
+// Constants
 // ---------------------------------------------------------
 
 const MM  = 0.1;
@@ -92,35 +91,34 @@ const packGroup = new THREE.Group();
 scene.add(packGroup);
 
 // ---------------------------------------------------------
-// Helper functions
+// Helpers
 // ---------------------------------------------------------
 
-function getInt(el, fallback) {
+function getInt(el, fb) {
   const v = parseInt(el.value, 10);
-  return Number.isFinite(v) && v > 0 ? v : fallback;
+  return Number.isFinite(v) && v > 0 ? v : fb;
 }
 
-function getFloat(el, fallback) {
+function getFloat(el, fb) {
   const v = parseFloat(el.value);
-  return Number.isFinite(v) && v >= 0 ? v : fallback;
+  return Number.isFinite(v) && v >= 0 ? v : fb;
 }
 
 function readParams() {
   return {
-    rollsPerLane:      getInt(rollsPerLaneEl, 4),     // X
-    rollsPerChannel:   getInt(rollsPerChannelEl, 3),  // Z
-    rollsPerLayer:     getInt(rollsPerLayerEl, 2),    // Y
+    rollsPerLane:    getInt(rollsPerLaneEl, 4),
+    rollsPerChannel: getInt(rollsPerChannelEl, 3),
+    rollsPerLayer:   getInt(rollsPerLayerEl, 2),
 
     rollDiameterMm: getFloat(rollDiameterEl, 120),
     coreDiameterMm: getFloat(coreDiameterEl, 45),
     rollHeightMm:   getFloat(rollHeightEl, 100),
-
-    rollGapMm: getFloat(rollGapEl, 7)
+    rollGapMm:      getFloat(rollGapEl, 7)
   };
 }
 
 // ---------------------------------------------------------
-// Paper bump texture
+// Texture
 // ---------------------------------------------------------
 
 function createPaperBumpTexture() {
@@ -136,8 +134,8 @@ function createPaperBumpTexture() {
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
       const base = 125 + Math.random() * 20;
-      const gradient = (y / size) * 25;
-      const shade = base + gradient;
+      const grad = (y / size) * 25;
+      const shade = base + grad;
       d[i] = d[i+1] = d[i+2] = shade;
       d[i+3] = 255;
     }
@@ -152,17 +150,15 @@ function createPaperBumpTexture() {
 const paperBumpTex = createPaperBumpTexture();
 
 // ---------------------------------------------------------
-// Roll builder (with correct materials)
+// Build Roll
 // ---------------------------------------------------------
 
 function buildRoll(R_outer, R_coreOuter, L) {
   const group = new THREE.Group();
 
-  // Paper — white-purple tint
   const paperSideMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.96, 0.94, 1.0),
     roughness: 0.55,
-    metalness: 0.0,
     bumpMap: paperBumpTex,
     bumpScale: 0.03,
     emissive: new THREE.Color(0.06, 0.06, 0.08),
@@ -172,7 +168,6 @@ function buildRoll(R_outer, R_coreOuter, L) {
   const paperEndMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(0.97, 0.95, 1.0),
     roughness: 0.65,
-    metalness: 0.0,
     bumpMap: paperBumpTex,
     bumpScale: 0.04,
     side: THREE.DoubleSide,
@@ -180,17 +175,14 @@ function buildRoll(R_outer, R_coreOuter, L) {
     emissiveIntensity: 0.45
   });
 
-  // Cardboard core
   const coreSideMat = new THREE.MeshStandardMaterial({
     color: 0xb8925d,
-    roughness: 0.75,
-    metalness: 0.0
+    roughness: 0.75
   });
 
   const coreInnerMat = new THREE.MeshStandardMaterial({
     color: 0x7a7a7a,
     roughness: 0.85,
-    metalness: 0.0,
     side: THREE.BackSide,
     emissive: new THREE.Color(0.28, 0.22, 0.15),
     emissiveIntensity: 0.55
@@ -202,21 +194,11 @@ function buildRoll(R_outer, R_coreOuter, L) {
   const R_coreInner = Math.max(0, R_coreOuter - coreThickness);
   const bevelDepth = 0.9 * MM;
 
-  // SIDE
-  const sideGeom = new THREE.CylinderGeometry(
-    R_outer, R_outer,
-    L - bevelDepth * 2,
-    64, 1, true
-  );
+  const sideGeom = new THREE.CylinderGeometry(R_outer, R_outer, L - bevelDepth * 2, 64, 1, true);
   sideGeom.rotateZ(Math.PI / 2);
   group.add(new THREE.Mesh(sideGeom, paperSideMat));
 
-  // BEVELS
-  const bevelGeom = new THREE.CylinderGeometry(
-    R_outer, R_outer,
-    bevelDepth,
-    48, 1, true
-  );
+  const bevelGeom = new THREE.CylinderGeometry(R_outer, R_outer, bevelDepth, 48, 1, true);
   bevelGeom.rotateZ(Math.PI / 2);
 
   const bevelFront = new THREE.Mesh(bevelGeom, paperSideMat);
@@ -227,7 +209,6 @@ function buildRoll(R_outer, R_coreOuter, L) {
   bevelBack.position.x = -L/2 + bevelDepth/2;
   group.add(bevelBack);
 
-  // PAPER ENDS
   const endRingGeom = new THREE.RingGeometry(R_coreOuter, R_outer, 64);
 
   const endFront = new THREE.Mesh(endRingGeom, paperEndMat);
@@ -240,25 +221,14 @@ function buildRoll(R_outer, R_coreOuter, L) {
   endBack.rotation.y = -Math.PI / 2;
   group.add(endBack);
 
-  // CORE OUTER
-  const coreOuterGeom = new THREE.CylinderGeometry(
-    R_coreOuter, R_coreOuter,
-    L * 0.97,
-    48, 1, true
-  );
+  const coreOuterGeom = new THREE.CylinderGeometry(R_coreOuter, R_coreOuter, L * 0.97, 48, 1, true);
   coreOuterGeom.rotateZ(Math.PI / 2);
   group.add(new THREE.Mesh(coreOuterGeom, coreSideMat));
 
-  // CORE INNER
-  const coreInnerGeom = new THREE.CylinderGeometry(
-    R_coreInner, R_coreInner,
-    L * 0.97,
-    48, 1, true
-  );
+  const coreInnerGeom = new THREE.CylinderGeometry(R_coreInner, R_coreInner, L * 0.97, 48, 1, true);
   coreInnerGeom.rotateZ(Math.PI / 2);
   group.add(new THREE.Mesh(coreInnerGeom, coreInnerMat));
 
-  // CORE END RINGS
   const coreEndRingGeom = new THREE.RingGeometry(R_coreInner, R_coreOuter, 48);
 
   const coreFront = new THREE.Mesh(coreEndRingGeom, coreEndMat);
@@ -275,7 +245,7 @@ function buildRoll(R_outer, R_coreOuter, L) {
 }
 
 // ---------------------------------------------------------
-// Pack generation (FIXED AXIS)
+// Generate Pack
 // ---------------------------------------------------------
 
 function clearPack() {
@@ -293,9 +263,9 @@ function generatePack() {
   const D = p.rollDiameterMm * MM;
   const G = p.rollGapMm * MM;
 
-  const spacingX = L + G + EPS;  // LANE → X
-  const spacingY = D + EPS;      // LAYER → Y
-  const spacingZ = D + EPS;      // CHANNEL → Z
+  const spacingX = L + G + EPS;  
+  const spacingY = D + EPS;      
+  const spacingZ = D + EPS;      
 
   const offsetX = -((p.rollsPerLane    - 1) * spacingX) / 2;
   const offsetY = -((p.rollsPerLayer   - 1) * spacingY) / 2;
@@ -303,16 +273,17 @@ function generatePack() {
 
   clearPack();
 
-  for (let layer = 0; layer < p.rollsPerLayer; layer++) {      // Y
-    for (let lane = 0; lane < p.rollsPerLane; lane++) {        // X
-      for (let channel = 0; channel < p.rollsPerChannel; channel++) {  // Z
-
-        const x = offsetX + lane    * spacingX;
-        const y = offsetY + layer   * spacingY;
-        const z = offsetZ + channel * spacingZ;
+  for (let y = 0; y < p.rollsPerLayer; y++) {
+    for (let x = 0; x < p.rollsPerLane; x++) {
+      for (let z = 0; z < p.rollsPerChannel; z++) {
 
         const roll = buildRoll(R_outer, R_core, L);
-        roll.position.set(x, y, z);
+        roll.position.set(
+          offsetX + x * spacingX,
+          offsetY + y * spacingY,
+          offsetZ + z * spacingZ
+        );
+
         packGroup.add(roll);
       }
     }
@@ -338,7 +309,7 @@ function resetCamera() {
 }
 
 // ---------------------------------------------------------
-// Export PNG
+// Export PNG (UPDATED FILENAME)
 // ---------------------------------------------------------
 
 function exportPNG() {
@@ -348,16 +319,19 @@ function exportPNG() {
   renderer.render(scene, camera);
   const url = renderer.domElement.toDataURL("image/png");
 
+  const p = readParams();
+  const filename = `toilet_pack_${p.rollsPerChannel}_${p.rollsPerLane}_${p.rollsPerLayer}.png`;
+
   const a = document.createElement("a");
   a.href = url;
-  a.download = "toilet-pack.png";
+  a.download = filename;
   a.click();
 
   camDebugPanel.style.display = prev;
 }
 
 // ---------------------------------------------------------
-// Camera debug
+// Camera Debug
 // ---------------------------------------------------------
 
 function updateCameraDebug() {
